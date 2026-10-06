@@ -124,6 +124,15 @@ textarea{width:100%;min-height:100px;font-family:var(--mono);font-size:12px;colo
 .ipo .act{text-align:right}
 nav button{font-size:10.5px}
 
+/* sync */
+.sdot{width:12px;height:12px;border-radius:50%;border:0;padding:0;cursor:pointer;background:var(--muted)}
+.sdot.ok{background:#22a06b}.sdot.pending{background:#e0a21e}.sdot.error,.sdot.conflict{background:var(--up)}
+.conflict{border-color:var(--up)}
+.conflict .opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sstat{font-size:13px;padding:8px 10px;border-radius:8px;background:var(--bg)}
+details.guide summary{cursor:pointer;font-size:14px;color:var(--accent)}
+details.guide ol{margin:8px 0 0;padding-left:20px;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+
 /* bottom tab bar */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--panel);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{font:inherit;font-size:11px;background:none;border:0;color:var(--muted);padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
@@ -133,7 +142,7 @@ nav button[aria-current="page"]{color:var(--accent);font-weight:700}
 </style>
 </head>
 <body>
-<header><h1 id="ttl">보유 종목</h1><span id="hdr" class="num" style="font-size:14px"></span></header>
+<header><h1 id="ttl">보유 종목</h1><span style="display:flex;align-items:center;gap:10px"><span id="hdr" class="num" style="font-size:14px"></span><button id="syncDot" class="sdot" hidden aria-label="동기화 상태"></button></span></header>
 <main id="main"></main>
 <nav>
   <button data-tab="hold"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10M7 17h6"/></svg>보유</button>
@@ -157,7 +166,80 @@ try{basis=localStorage.getItem('avgcost.basis')||'val'}catch(e){}
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 if(!S||!S.stocks)S=JSON.parse(JSON.stringify(SAMPLE));
 try{tab=localStorage.getItem(TABKEY)||'hold'}catch(e){}
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const store=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const save=()=>{store();if(syncOn()){SY.dirty=true;SY.rev=(SY.rev||0)+1;saveSY();schedulePush()}};
+
+/* ===== 구글 시트 동기화 =====
+   SY: url, key, updated(마지막으로 맞춘 시트 버전), dirty(아직 안 올린 변경), last(마지막 성공 시각) */
+let SY={url:'',key:'',updated:0,dirty:false,last:0,rev:0};
+try{Object.assign(SY,JSON.parse(localStorage.getItem('avgcost.sync'))||{})}catch(e){}
+const saveSY=()=>{try{localStorage.setItem('avgcost.sync',JSON.stringify(SY))}catch(e){}};
+const syncOn=()=>!!(SY.url&&SY.key);
+let syncState=syncOn()?'pending':'off',syncMsg='',conflict=null,pushTimer=null,busy=false;
+function setSync(st,msg=''){syncState=st;syncMsg=msg;paintSync()}
+function paintSync(){
+  const d=document.getElementById('syncDot');if(!d)return;
+  d.hidden=!syncOn();d.className='sdot '+syncState;
+  d.title={ok:'동기화됨',pending:'동기화 중',error:'동기화 오류',conflict:'선택이 필요합니다'}[syncState]||'';
+  const st=document.getElementById('syncStat');if(st)st.innerHTML=syncText();
+}
+function syncText(){
+  if(!syncOn())return '연결되지 않았습니다.';
+  const t=SY.last?new Date(SY.last).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'없음';
+  return ({ok:'● 동기화됨',pending:'● 동기화 중…',error:'● '+(syncMsg||'오류'),conflict:'● 어느 쪽 데이터를 쓸지 선택하세요'}[syncState]||'')+`<br><span class="muted">마지막 동기화: ${t}${SY.dirty?' · 올리지 않은 변경 있음':''}</span>`;
+}
+function hasData(o){return o&&o.stocks&&(Object.keys(o.stocks).length||(o.ipo||[]).length)}
+function buildView(){
+  const h=[['티커','수량','평단($)','현재가($)','매입금액($)','평가금액($)','손익($)','수익률(%)','실현손익($)']];
+  for(const k in S.stocks){const c=calc(S.stocks[k]);h.push([k,+c.sh.toFixed(6),+c.avg.toFixed(4),+S.stocks[k].price||'',+c.cost.toFixed(2),+c.val.toFixed(2),+c.pl.toFixed(2),+c.plp.toFixed(2),+c.realized.toFixed(2)])}
+  const cu=cashUsd();if(cu>0)h.push(['현금','','','','',+cu.toFixed(2),'','','']);
+  const ip=[['매도일','종목','증권사','수량','공모가','매도가','수수료·세금','수익금(원)']];
+  (S.ipo||[]).slice().sort((a,b)=>a.d<b.d?-1:1).forEach(x=>ip.push([x.d,x.n,x.b||'',x.q||'',x.op||'',x.sp||'',x.f||'',x.pl]));
+  return {'보유현황':h,'공모주':ip};
+}
+async function api(method,body){
+  const opt=method==='POST'?{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)}:{};
+  const url=method==='GET'?SY.url+(SY.url.includes('?')?'&':'?')+'key='+encodeURIComponent(SY.key)+'&t='+Date.now():SY.url;
+  const r=await fetch(url,opt);const t=await r.text();
+  try{return JSON.parse(t)}catch(e){throw new Error('응답이 올바르지 않습니다. 웹 앱 주소(/exec)와 배포 권한을 확인하세요.')}
+}
+function failed(e){setSync('error',navigator.onLine===false?'오프라인 · 연결되면 다시 시도합니다':(e&&e.message)||'연결 실패')}
+function schedulePush(){clearTimeout(pushTimer);setSync('pending');pushTimer=setTimeout(()=>push(false),1500)}
+async function push(force){
+  if(!syncOn()||busy){if(busy)schedulePush();return}
+  busy=true;setSync('pending');const rev=SY.rev;
+  try{
+    const r=await api('POST',{key:SY.key,data:S,base:SY.updated,force:!!force,view:buildView()});
+    if(r.ok){SY.updated=r.updated;SY.last=Date.now();if(SY.rev===rev)SY.dirty=false;conflict=null;saveSY();setSync(SY.dirty?'pending':'ok');if(SY.dirty)schedulePush()}
+    else if(r.conflict){conflict={data:r.data,updated:r.updated};setSync('conflict');render()}
+    else if(r.error==='key')setSync('error','비밀 키가 맞지 않습니다');
+    else setSync('error','저장 실패');
+  }catch(e){failed(e)}
+  busy=false;
+}
+async function pull(){
+  if(!syncOn()||busy||conflict)return;
+  busy=true;setSync('pending');
+  try{
+    const r=await api('GET');busy=false;
+    if(!r.ok){setSync('error',r.error==='key'?'비밀 키가 맞지 않습니다':'불러오기 실패');return}
+    if(!r.data){busy=false;return push(true)}                 // 시트가 비어 있으면 이 기기 데이터로 시작
+    if(r.updated===SY.updated){SY.last=Date.now();saveSY();if(SY.dirty)return push(false);return setSync('ok')}
+    if(!SY.dirty||!hasData(S)||S.sample){S=r.data;SY.updated=r.updated;SY.dirty=false;SY.last=Date.now();store();saveSY();setSync('ok');render();return}
+    conflict={data:r.data,updated:r.updated};setSync('conflict');render();
+  }catch(e){busy=false;failed(e)}
+}
+function conflictCard(){
+  if(!conflict)return '';
+  const sm=o=>{const st=Object.values(o.stocks||{});return `${st.length}종목 · 거래 ${st.reduce((a,x)=>a+x.tx.length,0)}건 · 공모주 ${(o.ipo||[]).length}건`};
+  const t=new Date(conflict.updated).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  return `<div class="card stack conflict">
+    <h2 style="margin:0">다른 기기에서 바뀐 내용이 있습니다</h2>
+    <p class="note">이 기기에도 아직 올리지 않은 변경이 있어 자동으로 합칠 수 없습니다. 남길 쪽을 고르세요.</p>
+    <p class="note num">시트 (${t} 저장): ${sm(conflict.data)}<br>이 기기: ${sm(S)}</p>
+    <div class="opts"><button class="btn" data-sync="remote">시트 데이터 쓰기</button><button class="ghost" data-sync="local">이 기기로 덮어쓰기</button></div>
+  </div>`;
+}
 
 const $=s=>document.querySelector(s);
 const usd=(n,d=2)=>(n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -194,7 +276,8 @@ function render(){
   $('#ttl').textContent=TITLES[tab];
   const t=totals();
   $('#hdr').innerHTML=t.c&&tab!=='ipo'?`<span class="${cls(t.pl)}">${pct(t.plp)}</span>`:'';
-  $('#main').innerHTML=({hold:vHold,stock:vStock,sim:vSim,ipo:vIpo,set:vSet})[tab]();
+  $('#main').innerHTML=conflictCard()+({hold:vHold,stock:vStock,sim:vSim,ipo:vIpo,set:vSet})[tab]();
+  paintSync();
   if(tab==='sim')sim();
 }
 
@@ -409,13 +492,26 @@ function vIpo(){
 
 function vSet(){
   return `<div class="card stack">
+    <h2 style="margin:0">구글 시트 동기화</h2>
+    <div class="sstat" id="syncStat">${syncText()}</div>
+    <label class="f">웹 앱 주소<input id="syUrl" value="${esc(SY.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" inputmode="url"></label>
+    <label class="f">비밀 키<input id="syKey" type="password" value="${esc(SY.key)}" placeholder="Apps Script의 SECRET 값" autocomplete="off"></label>
+    ${syncOn()?`<div class="row2"><button class="btn" id="syNow" type="button">지금 동기화</button><button class="ghost" id="syOff" type="button">연결 해제</button></div>`:`<button class="btn" id="syOn" type="button">연결하기</button>`}
+    <details class="guide"><summary>설정 방법</summary><ol>
+      <li>구글 시트를 새로 만들고 확장 프로그램 → Apps Script를 엽니다.</li>
+      <li>받은 Code.gs 내용을 붙여넣고 SECRET 값을 나만 아는 문자열로 바꿉니다.</li>
+      <li>배포 → 새 배포 → 웹 앱, 실행: 나, 액세스: 모든 사용자로 배포합니다.</li>
+      <li>나온 웹 앱 주소와 SECRET 값을 여기에 넣고 연결합니다. PC와 폰 모두 같은 값을 넣으세요.</li>
+    </ol></details>
+  </div>
+  <div class="card stack">
     <h2 style="margin:0">환율</h2>
     <label class="f">원/달러 (₩)<input id="fx" class="num" type="number" inputmode="decimal" step="0.1" value="${S.fx||''}" placeholder="1385"></label>
     <p class="note">입력하면 모든 화면에 원화 환산 금액이 함께 표시됩니다. 비우면 숨깁니다.</p>
   </div>
   <div class="card stack">
     <h2 style="margin:0">백업 · 복원</h2>
-    <p class="note">기록은 이 폰의 Chrome에만 저장됩니다. 가끔 복사해서 메모나 카톡에 보관하세요.</p>
+    <p class="note">${syncOn()?'구글 시트와 동기화 중입니다. 시트가 자동 백업 역할을 하지만, 가끔 복사해 두면 더 안전합니다.':'기록은 이 기기의 브라우저에만 저장됩니다. 가끔 복사해서 메모나 카톡에 보관하세요.'}</p>
     <button class="btn" id="cpy">데이터 복사</button>
     <button class="ghost" id="restoreBtn">붙여넣어 복원</button>
     <div id="restoreBox" class="stack" hidden><textarea id="restoreTxt" placeholder="복사해 둔 데이터를 붙여넣으세요"></textarea><button class="btn" id="restoreGo">복원하기</button></div>
@@ -443,7 +539,17 @@ document.addEventListener('click',e=>{
   if(b.dataset.year){ipoYear=b.dataset.year;return render()}
   if(b.dataset.ipodel!=null)return arm(b,'확인',()=>{S.ipo.splice(+b.dataset.ipodel,1);save();render();toast('삭제했습니다')});
   if(b.dataset.del!=null)return arm(b,'확인',()=>{S.stocks[S.sel].tx.splice(+b.dataset.del,1);save();render();toast('삭제했습니다')});
+  if(b.dataset.sync==='remote'){S=conflict.data;SY.updated=conflict.updated;SY.dirty=false;SY.last=Date.now();conflict=null;store();saveSY();setSync('ok');render();return toast('시트 데이터로 맞췄습니다')}
+  if(b.dataset.sync==='local'){conflict=null;render();push(true);return toast('이 기기 데이터로 덮어씁니다')}
+  if(b.id==='syncDot')return go('set');
   switch(b.id){
+    case 'syOn':case 'syNow':{const u=$('#syUrl').value.trim(),k=$('#syKey').value.trim();
+      if(!/^https:\/\/script\.google(usercontent)?\.com\//.test(u))return toast('script.google.com 웹 앱 주소를 넣으세요');
+      if(!k)return toast('비밀 키를 넣으세요');
+      const changed=u!==SY.url||k!==SY.key;
+      if(changed){SY.url=u;SY.key=k;SY.updated=0;SY.dirty=!!hasData(S)&&!S.sample}
+      saveSY();render();if(SY.dirty&&!changed)push(false);else pull();break}
+    case 'syOff':SY={url:'',key:'',updated:0,dirty:false,last:0,rev:0};saveSY();conflict=null;setSync('off');render();toast('연결을 해제했습니다. 데이터는 이 기기에 남아 있습니다');break;
     case 'toggleForm':formOpen=!formOpen;render();if(formOpen)$('#txQ').focus();break;
     case 'delTk':arm(b,'한 번 더 누르면 삭제됩니다',()=>{delete S.stocks[S.sel];S.sel=null;save();go('hold');toast('종목을 삭제했습니다')});break;
     case 'cpy':{const t=JSON.stringify(S);(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('복사했습니다')).catch(()=>{$('#restoreBox').hidden=false;$('#restoreTxt').value=t;$('#restoreTxt').select();toast('선택된 텍스트를 직접 복사하세요')});break}
@@ -482,6 +588,9 @@ document.addEventListener('change',e=>{
     setTimeout(()=>{const a=document.activeElement?.id,y=scrollY;render();scrollTo(0,y);if(a&&$('#'+a))$('#'+a).focus({preventScroll:true});toast('현금을 반영했습니다')},0)}
 });
 render();
+pull();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull()});
+addEventListener('online',()=>{SY.dirty?push(false):pull()});
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js'));
 </script>
 </body>
