@@ -166,6 +166,9 @@ button.hcard:active{background:var(--accent-soft)}
 .hcard .h3 .muted{font-size:12px;min-width:44px;text-align:right}
 .need{font-size:12px;font-weight:600;color:var(--c2);background:color-mix(in srgb,var(--c2) 14%,transparent);padding:2px 8px;border-radius:99px;font-family:var(--sans)}
 
+.qline{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;font-size:12px}
+.qwarn{color:var(--c2)}
+
 /* bottom tab bar */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--panel);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{font:inherit;font-size:11px;background:none;border:0;color:var(--muted);padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
@@ -230,9 +233,9 @@ function buildView(){
   (S.ipo||[]).slice().sort((a,b)=>a.d<b.d?-1:1).forEach(x=>ip.push([x.d,x.n,x.b||'',x.q||'',x.op||'',x.sp||'',x.f||'',x.pl]));
   return {'보유현황':h,'공모주':ip};
 }
-async function api(method,body){
+async function api(method,body,extra=''){
   const opt=method==='POST'?{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)}:{};
-  const url=method==='GET'?SY.url+(SY.url.includes('?')?'&':'?')+'key='+encodeURIComponent(SY.key)+'&t='+Date.now():SY.url;
+  const url=method==='GET'?SY.url+(SY.url.includes('?')?'&':'?')+'key='+encodeURIComponent(SY.key)+extra+'&t='+Date.now():SY.url;
   const r=await fetch(url,opt);const t=await r.text();
   try{return JSON.parse(t)}catch(e){throw new Error('응답이 올바르지 않습니다. 웹 앱 주소(/exec)와 배포 권한을 확인하세요.')}
 }
@@ -258,10 +261,42 @@ async function pull(){
     if(!r.ok){setSync('error',r.error==='key'?'비밀 키가 맞지 않습니다':'불러오기 실패');return}
     if(!r.data){busy=false;return push(true)}                 // 시트가 비어 있으면 이 기기 데이터로 시작
     if(r.updated===SY.updated){SY.last=Date.now();saveSY();if(SY.dirty)return push(false);return setSync('ok')}
-    if(!SY.dirty||!hasData(S)||S.sample){S=r.data;SY.updated=r.updated;SY.dirty=false;SY.last=Date.now();store();saveSY();setSync('ok');render();return}
+    if(!SY.dirty||!hasData(S)||S.sample){S=r.data;applyQuotes();SY.updated=r.updated;SY.dirty=false;SY.last=Date.now();store();saveSY();setSync('ok');render();return}
     conflict={data:r.data,updated:r.updated};setSync('conflict');render();
   }catch(e){busy=false;failed(e)}
 }
+/* ===== 자동 시세 (구글 시트 GOOGLEFINANCE) =====
+   Q는 이 기기에만 저장. 시세 반영은 '변경'으로 치지 않아 기기 간 충돌을 만들지 않음 */
+let Q={prices:{},fx:null,at:0},qBusy=false,qMsg='';
+try{Object.assign(Q,JSON.parse(localStorage.getItem('avgcost.q'))||{})}catch(e){}
+const qTime=()=>Q.at?new Date(Q.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+function applyQuotes(){
+  if(!Q.at||!S||!S.stocks)return false;
+  for(const k in S.stocks){const v=Q.prices&&Q.prices[k];if(v>0)S.stocks[k].price=v}
+  if(Q.fx>0&&S.autoFx!==false)S.fx=Math.round(Q.fx*100)/100;
+  return true;
+}
+async function refreshQuotes(force){
+  if(!syncOn()||qBusy)return;
+  const tks=Object.keys(S.stocks);
+  if(!force&&Q.at&&Date.now()-Q.at<5*60e3&&tks.every(k=>k in (Q.prices||{}))){if(applyQuotes()){store();render()}return}
+  qBusy=true;qMsg='';paintQuote();
+  try{
+    const r=await api('GET',null,'&action=quotes&tickers='+encodeURIComponent(tks.join(',')));
+    if(r.ok&&r.prices){Q={prices:r.prices,fx:r.fx,at:r.at||Date.now()};try{localStorage.setItem('avgcost.q',JSON.stringify(Q))}catch(e){}
+      const miss=tks.filter(k=>!(r.prices[k]>0));qMsg=miss.length?miss.join(', ')+' 시세 없음 · 직접 입력':'';
+      applyQuotes();store();}
+    else if(r.ok&&!r.prices)qMsg='Apps Script 코드를 새 버전으로 배포해야 시세가 나옵니다';
+    else qMsg=r.error==='key'?'비밀 키가 맞지 않습니다':'시세를 불러오지 못했습니다';
+  }catch(e){qMsg=navigator.onLine===false?'오프라인':'시세를 불러오지 못했습니다'}
+  qBusy=false;render();
+}
+function quoteLine(){
+  if(!syncOn())return `<div class="qline muted">설정에서 구글 시트를 연결하면 현재가와 환율이 자동으로 들어옵니다.</div>`;
+  return `<div class="qline"><span class="muted" id="qtxt">${qBusy?'시세 불러오는 중…':Q.at?'시세 '+qTime()+' 기준 · 최대 20분 지연':'시세 없음'}${qMsg?'<br><span class="qwarn">'+esc(qMsg)+'</span>':''}</span><button class="linkbtn" id="qRefresh" type="button" ${qBusy?'disabled':''}>↻ 새로고침</button></div>`;
+}
+function paintQuote(){const e=document.getElementById('qtxt');if(e)e.textContent=qBusy?'시세 불러오는 중…':''}
+
 function conflictCard(){
   if(!conflict)return '';
   const sm=o=>{const st=Object.values(o.stocks||{});return `${st.length}종목 · 거래 ${st.reduce((a,x)=>a+x.tx.length,0)}건 · 공모주 ${(o.ipo||[]).length}건`};
@@ -396,6 +431,7 @@ function vHold(){
       <div class="sep"></div>
       <div><div class="label">확정 수익</div><div class="num fv ${cls(t.r)}">${t.r>0?'+':''}${usd(t.r,0)}</div></div>
     </div>
+    ${quoteLine()}
   </div>
   <div class="secth"><h2>보유 종목 <span class="muted num">${n}</span></h2><button class="linkbtn" id="addToggle" type="button">${showAdd&&n?'닫기':'+ 종목 추가'}</button></div>
   <form class="card" id="addTk" ${showAdd?'':'hidden'}>
@@ -430,7 +466,7 @@ function vStock(){
     </div>`).join('');
   return `${chips()}
   <div class="card">
-    <label class="f" style="margin-bottom:12px">현재가 ($)<input id="price" class="num" type="number" inputmode="decimal" step="any" value="${st.price||''}" placeholder="현재가 입력"></label>
+    <label class="f" style="margin-bottom:12px">현재가 ($)${Q.prices&&Q.prices[S.sel]>0?` · <span style="color:var(--accent)">자동 ${qTime()}</span>`:''}<input id="price" class="num" type="number" inputmode="decimal" step="any" value="${st.price||''}" placeholder="현재가 입력"></label>
     <div id="sum">${summary(st,c)}</div>
   </div>
   <div class="card">
@@ -563,7 +599,8 @@ function vSet(){
   <div class="card stack">
     <h2 style="margin:0">환율</h2>
     <label class="f">원/달러 (₩)<input id="fx" class="num" type="number" inputmode="decimal" step="0.1" value="${S.fx||''}" placeholder="1385"></label>
-    <p class="note">입력하면 모든 화면에 원화 환산 금액이 함께 표시됩니다. 비우면 숨깁니다.</p>
+    <label style="display:flex;align-items:center;gap:8px;font-size:14px"><input id="autoFx" type="checkbox" ${S.autoFx!==false?'checked':''} style="width:auto"> 구글 시세로 환율 자동 반영</label>
+    <p class="note">입력하면 모든 화면에 원화 환산 금액이 함께 표시됩니다. 자동 반영을 켜면 시세를 불러올 때마다 환율이 바뀝니다.</p>
   </div>
   <div class="card stack">
     <h2 style="margin:0">백업 · 복원</h2>
@@ -595,9 +632,10 @@ document.addEventListener('click',e=>{
   if(b.dataset.year){ipoYear=b.dataset.year;return render()}
   if(b.dataset.ipodel!=null)return arm(b,'확인',()=>{S.ipo.splice(+b.dataset.ipodel,1);save();render();toast('삭제했습니다')});
   if(b.dataset.del!=null)return arm(b,'확인',()=>{S.stocks[S.sel].tx.splice(+b.dataset.del,1);save();render();toast('삭제했습니다')});
-  if(b.dataset.sync==='remote'){S=conflict.data;SY.updated=conflict.updated;SY.dirty=false;SY.last=Date.now();conflict=null;store();saveSY();setSync('ok');render();return toast('시트 데이터로 맞췄습니다')}
+  if(b.dataset.sync==='remote'){S=conflict.data;applyQuotes();SY.updated=conflict.updated;SY.dirty=false;SY.last=Date.now();conflict=null;store();saveSY();setSync('ok');render();return toast('시트 데이터로 맞췄습니다')}
   if(b.dataset.sync==='local'){conflict=null;render();push(true);return toast('이 기기 데이터로 덮어씁니다')}
   if(b.id==='syncDot')return go('set');
+  if(b.id==='qRefresh')return refreshQuotes(true);
   if(b.id==='addToggle'){addOpen=!addOpen;render();if(addOpen)$('#newTk')?.focus();return}
   if(b.id==='cashToggle'){cashOpen=!cashOpen;render();if(cashOpen)$('#cashUsd')?.focus();return}
   switch(b.id){
@@ -619,7 +657,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('submit',e=>{
   e.preventDefault();
   if(e.target.id==='addTk'){const t=$('#newTk').value.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g,'');if(!t)return;
-    if(!S.stocks[t])S.stocks[t]={price:0,tx:[]};S.sel=t;addOpen=false;S.sample=false;formOpen=true;save();go('stock');toast(t+' 추가됨')}
+    if(!S.stocks[t])S.stocks[t]={price:0,tx:[]};S.sel=t;addOpen=false;setTimeout(()=>refreshQuotes(true),300);S.sample=false;formOpen=true;save();go('stock');toast(t+' 추가됨')}
   if(e.target.id==='ipoForm'){const n=$('#iN').value.trim(),pl=Math.round(+$('#iPl').value);
     if(!n||!isFinite(pl)||$('#iPl').value==='')return toast('종목명과 수익금을 입력하세요');
     const num=id=>+$(id).value||0;
@@ -641,13 +679,14 @@ document.addEventListener('input',e=>{
     if(op>0&&sp>0&&q>0)$('#iPl').value=Math.round((sp-op)*q-f)}
 });
 document.addEventListener('change',e=>{
+  if(e.target.id==='autoFx'){S.autoFx=e.target.checked;if(S.autoFx)applyQuotes();save();render();return}
   if(e.target.id==='cashUsd'||e.target.id==='cashKrw'){
     /* 다음 칸으로 포커스가 옮겨진 뒤 다시 그리고, 포커스를 되돌려 입력이 끊기지 않게 함 */
     setTimeout(()=>{const a=document.activeElement?.id,y=scrollY;render();scrollTo(0,y);if(a&&$('#'+a))$('#'+a).focus({preventScroll:true});toast('현금을 반영했습니다')},0)}
 });
 render();
-pull();
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pull()});
+pull();refreshQuotes(false);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){pull();refreshQuotes(false)}});
 addEventListener('online',()=>{SY.dirty?push(false):pull()});
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js'));
 </script>
