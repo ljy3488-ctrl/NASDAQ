@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>쭈식관리</title>
 <link rel="manifest" href="manifest.webmanifest">
+<script>
+/* 카톡 인앱 브라우저로 열리면 기본 브라우저(Chrome)로 다시 열기 */
+if(/KAKAOTALK/i.test(navigator.userAgent)){location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(location.href)}
+</script>
 <meta name="theme-color" content="#2f4fd1">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
