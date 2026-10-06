@@ -137,6 +137,35 @@ nav button{font-size:10.5px}
 details.guide summary{cursor:pointer;font-size:14px;color:var(--accent)}
 details.guide ol{margin:8px 0 0;padding-left:20px;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
 
+/* holdings v2 */
+.hero .big{font-size:32px}
+.plrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.chg{display:inline-flex;align-items:center;gap:2px;padding:2px 8px;border-radius:99px;font-family:var(--mono);font-weight:700;font-size:13px;background:var(--bg);color:var(--muted)}
+.chg.up{background:color-mix(in srgb,var(--up) 13%,transparent);color:var(--up)}
+.chg.down{background:color-mix(in srgb,var(--down) 13%,transparent);color:var(--down)}
+.flow{display:grid;grid-template-columns:auto auto auto 1fr auto;gap:8px;align-items:end;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.flow .arrow{color:var(--muted);padding-bottom:2px}
+.flow .sep{width:1px;align-self:stretch;background:var(--line);margin:0 4px;justify-self:end}
+.flow>div:last-child{text-align:right}
+.flow .fv{font-size:16px;font-weight:600}
+.secth{display:flex;justify-content:space-between;align-items:center;padding:6px 2px 0}
+.secth h2{margin:0;font-size:16px}
+.linkbtn{font:inherit;font-size:14px;font-weight:600;background:none;border:0;color:var(--accent);cursor:pointer;padding:6px 4px}
+.hlist{display:flex;flex-direction:column;gap:8px}
+.hcard{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;color:inherit;font:inherit;cursor:pointer}
+.hcard.cash{cursor:default}
+button.hcard:active{background:var(--accent-soft)}
+.hcard .h1,.hcard .h2,.hcard .h3{display:flex;align-items:center;gap:8px;min-width:0}
+.hcard .h2{justify-content:space-between;font-size:13px}
+.hcard .dot{width:10px;height:10px;border-radius:3px;flex:none}
+.hcard .tk{font-family:var(--mono);font-weight:700;font-size:17px}
+.hcard .hv{margin-left:auto;font-size:17px;font-weight:700}
+.hcard .plv{font-weight:600}
+.hcard .wbar{flex:1;height:5px;background:var(--bg);border-radius:3px;overflow:hidden}
+.hcard .wbar i{display:block;height:100%;border-radius:3px}
+.hcard .h3 .muted{font-size:12px;min-width:44px;text-align:right}
+.need{font-size:12px;font-weight:600;color:var(--c2);background:color-mix(in srgb,var(--c2) 14%,transparent);padding:2px 8px;border-radius:99px;font-family:var(--sans)}
+
 /* bottom tab bar */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--panel);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{font:inherit;font-size:11px;background:none;border:0;color:var(--muted);padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
@@ -292,16 +321,22 @@ function chips(){
 const noStock=`<div class="card empty">보유 탭에서 티커를 먼저 추가하세요.<br><br><button class="ghost" data-go="hold">보유 탭으로</button></div>`;
 
 /* 비중 도넛: 평가금액(val) 또는 매입금액(cost) 기준, 8개 초과분은 '기타'로 묶음 */
+/* 종목별 고정 색: 평가금액(없으면 매입금액) 큰 순서로 c1~c7, 나머지는 회색 */
+function colorMap(){
+  const ks=Object.keys(S.stocks).map(k=>{const c=calc(S.stocks[k]);return{k,v:c.val||c.cost}}).sort((a,b)=>b.v-a.v);
+  const many=ks.length>8,m={};ks.forEach((x,i)=>m[x.k]=many&&i>=7?'var(--c9)':`var(--c${i+1})`);return m;
+}
 function allocChart(){
+  const CM=colorMap();
   const f=fx();
   let items=Object.keys(S.stocks).map(k=>{const c=calc(S.stocks[k]);return{k,v:basis==='val'?c.val:c.cost,plp:c.plp,has:c.cost>0}}).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
   if(items.length>8){const rest=items.slice(7);items=items.slice(0,7);items.push({k:'기타 '+rest.length+'종목',v:rest.reduce((a,x)=>a+x.v,0),other:true})}
   const cu=cashUsd();if(cu>0)items.push({k:'현금',v:cu,cash:true});
   const sum=items.reduce((a,x)=>a+x.v,0);
-  const head=`<div class="split" style="margin-bottom:12px"><h2 style="margin:0">종목 비중</h2>
-    <div class="seg sm"><button type="button" data-basis="val" aria-pressed="${basis==='val'}">평가금액</button><button type="button" data-basis="cost" aria-pressed="${basis==='cost'}">매입금액</button></div></div>`;
+  const head=`<div class="split" style="margin-bottom:12px"><h2 style="margin:0">자산 구성</h2>
+    <div class="seg sm"><button type="button" data-basis="val" aria-pressed="${basis==='val'}">지금 가치</button><button type="button" data-basis="cost" aria-pressed="${basis==='cost'}">투자한 돈</button></div></div>`;
   if(!sum)return `<div class="card">${head}<p class="note">${basis==='val'?'종목 탭에서 현재가를 입력하면 평가금액 기준 비중이 나옵니다.':'매수 기록을 넣으면 비중이 나옵니다.'}</p></div>`;
-  items.forEach((x,i)=>{x.p=x.v/sum*100;x.c=x.cash?'var(--cash)':x.other?'var(--c9)':`var(--c${i+1})`});
+  items.forEach(x=>{x.p=x.v/sum*100;x.c=x.cash?'var(--cash)':x.other?'var(--c9)':CM[x.k]});
   const R=60,C=2*Math.PI*R,gap=items.length>1?1.5:0;let off=0;
   const arcs=items.map(x=>{const len=Math.max(C*x.p/100-gap,0.5);const s=`<circle cx="75" cy="75" r="${R}" fill="none" stroke="${x.c}" stroke-width="20" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 75 75)"><title>${esc(x.k)} ${x.p.toFixed(1)}%</title></circle>`;off+=C*x.p/100;return s}).join('');
   const top=items[0];
@@ -319,38 +354,55 @@ function allocChart(){
   </div>`;
 }
 
+let addOpen=false,cashOpen=false;
+const chg=(v,p)=>`<span class="chg ${cls(v)}">${v>0?'▲':v<0?'▼':''} ${Math.abs(p).toFixed(2)}%</span>`;
 function vHold(){
-  const t=totals(),f=fx();
-  const list=Object.keys(S.stocks).map(k=>{const c=calc(S.stocks[k]);
-    return `<button class="hold" data-open="${esc(k)}">
-      <span class="tk">${esc(k)}</span><span class="pl ${cls(c.pl)}">${c.cost?pct(c.plp):'—'}</span>
-      <span class="sub num">${qf(c.sh)}주 · 평단 ${usd(c.avg)}</span><span class="sub r num ${cls(c.pl)}">${c.cost?usd(c.pl):''}</span>
-      <span class="sub num">현재가 ${S.stocks[k].price?usd(+S.stocks[k].price):'미입력'}</span><span class="sub r num">${usd(c.val,0)}</span></button>`}).join('');
+  const t=totals(),f=fx(),cu=cashUsd(),CM=colorMap();
+  const total=t.v+cu;
+  const rows=Object.keys(S.stocks).map(k=>({k,st:S.stocks[k],c:calc(S.stocks[k])})).sort((a,b)=>(b.c.val||b.c.cost)-(a.c.val||a.c.cost));
+  const n=rows.length;
+  const list=rows.map(({k,st,c})=>{
+    const w=total?c.val/total*100:0,noPrice=!(+st.price)&&c.sh>0;
+    return `<button class="hcard" data-open="${esc(k)}">
+      <span class="h1"><span class="dot" style="background:${CM[k]}"></span><span class="tk">${esc(k)}</span>
+        <span class="hv num">${noPrice?'<span class="need">현재가 입력</span>':usd(c.val)}</span></span>
+      <span class="h2"><span class="muted num">${qf(c.sh)}주 · 평단 ${usd(c.avg)}</span>
+        <span class="num">${c.cost&&!noPrice?`<span class="${cls(c.pl)} plv">${c.pl>0?'+':''}${usd(c.pl)}</span> ${chg(c.pl,c.plp)}`:''}</span></span>
+      <span class="h3"><span class="wbar"><i style="width:${w.toFixed(1)}%;background:${CM[k]}"></i></span><span class="muted num">${w.toFixed(1)}%</span></span>
+    </button>`}).join('');
+  const cashRow=`<div class="hcard cash">
+      <span class="h1"><span class="dot" style="background:var(--cash)"></span><span class="tk" style="font-family:var(--sans)">현금</span>
+        <span class="hv num">${usd(cu)}</span></span>
+      <span class="h2"><span class="muted num">${S.cash.usd?usd(+S.cash.usd)+' ':''}${S.cash.krw?(S.cash.usd?'+ ':'')+krw(+S.cash.krw):''}${!S.cash.usd&&!S.cash.krw?'예수금을 입력하면 비중에 포함됩니다':''}</span>
+        <button class="linkbtn" id="cashToggle" type="button">${cashOpen?'닫기':'수정'}</button></span>
+      ${cu>0?`<span class="h3"><span class="wbar"><i style="width:${(total?cu/total*100:0).toFixed(1)}%;background:var(--cash)"></i></span><span class="muted num">${(total?cu/total*100:0).toFixed(1)}%</span></span>`:''}
+      <div class="row2" ${cashOpen?'':'hidden'} style="margin-top:10px">
+        <label class="f">달러 ($)<input id="cashUsd" class="num" type="number" inputmode="decimal" step="any" min="0" value="${S.cash.usd||''}" placeholder="0"></label>
+        <label class="f">원화 (₩)<input id="cashKrw" class="num" type="number" inputmode="decimal" step="1" min="0" value="${S.cash.krw||''}" placeholder="0"></label>
+      </div>
+      ${cashOpen&&S.cash.krw&&!f?'<p class="note" style="margin-top:8px">원화를 포함하려면 설정 탭에서 환율을 입력하세요.</p>':''}
+    </div>`;
+  const showAdd=addOpen||!n;
   return `${S.sample?'<p class="sample">예시 데이터입니다. 설정 탭의 초기화로 지우고 실제 종목을 넣으세요.</p>':''}
-  <div class="card">
-    <div class="label">총 평가금액</div>
-    <div class="big num">${usd(t.v)}</div>
-    ${f?`<div class="num muted" style="font-size:14px">${krw(t.v*f)}</div>`:''}
-    ${cashUsd()>0?`<div class="num" style="font-size:14px;margin-top:6px">현금 포함 총자산 <b>${usd(t.v+cashUsd())}</b>${f?' · '+krw((t.v+cashUsd())*f):''}</div>`:''}
-    <div class="row2" style="margin-top:14px">
-      <div class="kv"><div class="label">평가손익</div><div class="v num ${cls(t.pl)}">${usd(t.pl)}<br><span style="font-size:14px">${pct(t.plp)}${f?' · '+krw(t.pl*f):''}</span></div></div>
-      <div class="kv"><div class="label">매입금액 / 실현손익</div><div class="v num">${usd(t.c)}<br><span class="${cls(t.r)}" style="font-size:14px">${usd(t.r)}</span></div></div>
+  <div class="card hero">
+    <div class="label">내 자산${cu>0?' (현금 포함)':''}</div>
+    <div class="big num">${usd(total)}</div>
+    ${f?`<div class="num muted" style="font-size:14px">${krw(total*f)}</div>`:''}
+    ${t.c?`<div class="plrow"><span class="num ${cls(t.pl)}" style="font-weight:700;font-size:17px">${t.pl>0?'+':''}${usd(t.pl)}</span>${chg(t.pl,t.plp)}${f?`<span class="muted num" style="font-size:13px">${t.pl>0?'+':''}${krw(t.pl*f)}</span>`:''}</div>`:''}
+    <div class="flow">
+      <div><div class="label">투자한 돈</div><div class="num fv">${usd(t.c,0)}</div></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div><div class="label">지금 가치</div><div class="num fv">${usd(t.v,0)}</div></div>
+      <div class="sep"></div>
+      <div><div class="label">확정 수익</div><div class="num fv ${cls(t.r)}">${t.r>0?'+':''}${usd(t.r,0)}</div></div>
     </div>
   </div>
-  ${allocChart()}
-  <div class="card stack">
-    <h2 style="margin:0">현금 (예수금)</h2>
-    <div class="row2">
-      <label class="f">달러 ($)<input id="cashUsd" class="num" type="number" inputmode="decimal" step="any" min="0" value="${S.cash.usd||''}" placeholder="0"></label>
-      <label class="f">원화 (₩)<input id="cashKrw" class="num" type="number" inputmode="decimal" step="1" min="0" value="${S.cash.krw||''}" placeholder="0"></label>
-    </div>
-    <p class="note">${S.cash.krw&&!f?'원화를 비중에 넣으려면 설정 탭에서 환율을 입력하세요.':'입력을 마치면 비중 차트에 "현금"으로 표시됩니다. 원화는 환율로 달러 환산합니다.'}</p>
-  </div>
-  ${list||'<div class="card empty">아래에서 첫 종목을 추가하세요.</div>'}
-  <form class="card stack" id="addTk">
-    <h2 style="margin:0">종목 추가</h2>
-    <div style="display:grid;grid-template-columns:1fr auto;gap:8px"><input id="newTk" placeholder="티커 (예: TSLA)" maxlength="10" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase"><button class="btn" style="width:auto">추가</button></div>
-  </form>`;
+  <div class="secth"><h2>보유 종목 <span class="muted num">${n}</span></h2><button class="linkbtn" id="addToggle" type="button">${showAdd&&n?'닫기':'+ 종목 추가'}</button></div>
+  <form class="card" id="addTk" ${showAdd?'':'hidden'}>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:8px"><input id="newTk" placeholder="티커 입력 (예: TSLA)" maxlength="10" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase"><button class="btn" style="width:auto">추가</button></div>
+  </form>
+  <div class="hlist">${list}${cashRow}</div>
+  ${n?allocChart():''}`;
 }
 
 function summary(st,c){
@@ -546,6 +598,8 @@ document.addEventListener('click',e=>{
   if(b.dataset.sync==='remote'){S=conflict.data;SY.updated=conflict.updated;SY.dirty=false;SY.last=Date.now();conflict=null;store();saveSY();setSync('ok');render();return toast('시트 데이터로 맞췄습니다')}
   if(b.dataset.sync==='local'){conflict=null;render();push(true);return toast('이 기기 데이터로 덮어씁니다')}
   if(b.id==='syncDot')return go('set');
+  if(b.id==='addToggle'){addOpen=!addOpen;render();if(addOpen)$('#newTk')?.focus();return}
+  if(b.id==='cashToggle'){cashOpen=!cashOpen;render();if(cashOpen)$('#cashUsd')?.focus();return}
   switch(b.id){
     case 'syOn':case 'syNow':{const u=$('#syUrl').value.trim(),k=$('#syKey').value.trim();
       if(!/^https:\/\/script\.google(usercontent)?\.com\//.test(u))return toast('script.google.com 웹 앱 주소를 넣으세요');
@@ -565,7 +619,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('submit',e=>{
   e.preventDefault();
   if(e.target.id==='addTk'){const t=$('#newTk').value.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g,'');if(!t)return;
-    if(!S.stocks[t])S.stocks[t]={price:0,tx:[]};S.sel=t;S.sample=false;formOpen=true;save();go('stock');toast(t+' 추가됨')}
+    if(!S.stocks[t])S.stocks[t]={price:0,tx:[]};S.sel=t;addOpen=false;S.sample=false;formOpen=true;save();go('stock');toast(t+' 추가됨')}
   if(e.target.id==='ipoForm'){const n=$('#iN').value.trim(),pl=Math.round(+$('#iPl').value);
     if(!n||!isFinite(pl)||$('#iPl').value==='')return toast('종목명과 수익금을 입력하세요');
     const num=id=>+$(id).value||0;
