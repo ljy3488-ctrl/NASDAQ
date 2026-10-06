@@ -16,7 +16,10 @@
   --up:#d6303b; --down:#1f62d6;   /* 국내 관례: 상승 빨강, 하락 파랑 */
   --sans:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;
   --mono:ui-monospace,"Roboto Mono",Menlo,Consolas,monospace;
+  --c1:#2f4fd1; --c2:#e08a1e; --c3:#159a8c; --c4:#b8458f; --c5:#6b8e23; --c6:#7a5cc7; --c7:#c25b3a; --c8:#3b8fd0; --c9:#8a94a6;
 }
+@media (prefers-color-scheme:dark){:root{
+  --c1:#7d95ff; --c2:#f2a54a; --c3:#3cc7b6; --c4:#e07ab9; --c5:#a3c95a; --c6:#a68cf0; --c7:#ef8a68; --c8:#6fb6f0; --c9:#6c7588}}
 @media (prefers-color-scheme:dark){:root{
   --bg:#10141c; --panel:#181e29; --ink:#e6e9f0; --muted:#97a0b2; --line:#2a3242;
   --accent:#7d95ff; --accent-soft:#232c48; --on-accent:#0d1220; --up:#ff6b72; --down:#5d9bff; color-scheme:dark}}
@@ -85,6 +88,24 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mu
 .empty{text-align:center;color:var(--muted);padding:28px 8px}
 textarea{width:100%;min-height:100px;font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
 
+/* allocation chart */
+.alloc{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;align-items:center}
+@media (max-width:360px){.alloc{grid-template-columns:minmax(0,1fr)}.alloc svg{margin:0 auto}}
+.alloc svg{width:150px;height:150px;display:block}
+.alloc .ctr1{font-size:11px;fill:var(--muted);font-family:var(--sans)}
+.alloc .ctr2{font-size:17px;font-weight:700;fill:var(--ink);font-family:var(--mono)}
+.legend{display:flex;flex-direction:column;gap:8px;min-width:0}
+.lg{display:grid;grid-template-columns:10px 1fr auto;gap:2px 8px;align-items:center;font-size:14px}
+.lg .dot{width:10px;height:10px;border-radius:3px}
+.lg .t{font-family:var(--mono);font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.lg .p{font-family:var(--mono);font-weight:600;text-align:right}
+.lg .bar{grid-column:2/4;height:4px;background:var(--bg);border-radius:2px;overflow:hidden}
+.lg .bar i{display:block;height:100%;border-radius:2px}
+.lg .s{grid-column:2/4;font-size:12px;color:var(--muted);font-family:var(--mono)}
+.seg.sm button{padding:5px 10px;font-size:13px}
+.seg.sm button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.warn{font-size:13px;margin:12px 0 0;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--c2) 14%,transparent);color:var(--ink)}
+
 /* bottom tab bar */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--panel);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{font:inherit;font-size:11px;background:none;border:0;color:var(--muted);padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
@@ -112,7 +133,8 @@ const SAMPLE={fx:1385,sel:'NVDA',sample:true,stocks:{
   AAPL:{price:228.1,tx:[{d:'2026-02-10',t:'buy',q:8,p:241.5,f:0.4},{d:'2026-04-22',t:'buy',q:6,p:205.3,f:0.3}]},
   SCHD:{price:27.9,tx:[{d:'2026-01-15',t:'buy',q:100,p:27.1,f:1},{d:'2026-06-03',t:'buy',q:60,p:26.4,f:0.6}]}
 }};
-let S,tab='hold',txType='buy',formOpen=false;
+let S,tab='hold',txType='buy',formOpen=false,basis='val';
+try{basis=localStorage.getItem('avgcost.basis')||'val'}catch(e){}
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 if(!S||!S.stocks)S=JSON.parse(JSON.stringify(SAMPLE));
 try{tab=localStorage.getItem(TABKEY)||'hold'}catch(e){}
@@ -158,6 +180,33 @@ function chips(){
 }
 const noStock=`<div class="card empty">보유 탭에서 티커를 먼저 추가하세요.<br><br><button class="ghost" data-go="hold">보유 탭으로</button></div>`;
 
+/* 비중 도넛: 평가금액(val) 또는 매입금액(cost) 기준, 8개 초과분은 '기타'로 묶음 */
+function allocChart(){
+  const f=fx();
+  let items=Object.keys(S.stocks).map(k=>{const c=calc(S.stocks[k]);return{k,v:basis==='val'?c.val:c.cost,plp:c.plp,has:c.cost>0}}).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+  const sum=items.reduce((a,x)=>a+x.v,0);
+  const head=`<div class="split" style="margin-bottom:12px"><h2 style="margin:0">종목 비중</h2>
+    <div class="seg sm"><button type="button" data-basis="val" aria-pressed="${basis==='val'}">평가금액</button><button type="button" data-basis="cost" aria-pressed="${basis==='cost'}">매입금액</button></div></div>`;
+  if(!sum)return `<div class="card">${head}<p class="note">${basis==='val'?'종목 탭에서 현재가를 입력하면 평가금액 기준 비중이 나옵니다.':'매수 기록을 넣으면 비중이 나옵니다.'}</p></div>`;
+  if(items.length>8){const rest=items.slice(7);items=items.slice(0,7);items.push({k:'기타 '+rest.length+'종목',v:rest.reduce((a,x)=>a+x.v,0),other:true})}
+  items.forEach((x,i)=>{x.p=x.v/sum*100;x.c=x.other?'var(--c9)':`var(--c${i+1})`});
+  const R=60,C=2*Math.PI*R,gap=items.length>1?1.5:0;let off=0;
+  const arcs=items.map(x=>{const len=Math.max(C*x.p/100-gap,0.5);const s=`<circle cx="75" cy="75" r="${R}" fill="none" stroke="${x.c}" stroke-width="20" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 75 75)"><title>${esc(x.k)} ${x.p.toFixed(1)}%</title></circle>`;off+=C*x.p/100;return s}).join('');
+  const top=items[0];
+  const legend=items.map(x=>`<div class="lg"><span class="dot" style="background:${x.c}"></span><span class="t">${esc(x.k)}</span><span class="p">${x.p.toFixed(1)}%</span>
+    <span class="bar"><i style="width:${x.p}%;background:${x.c}"></i></span>
+    <span class="s">${usd(x.v,0)}${f?' · '+krw(x.v*f):''}</span></div>`).join('');
+  return `<div class="card">${head}
+    <div class="alloc">
+      <svg viewBox="0 0 150 150" role="img" aria-label="종목 비중 도넛 차트"><circle cx="75" cy="75" r="${R}" fill="none" stroke="var(--bg)" stroke-width="20"/>${arcs}
+        <text x="75" y="70" text-anchor="middle" class="ctr1">${basis==='val'?'평가금액':'매입금액'}</text>
+        <text x="75" y="90" text-anchor="middle" class="ctr2">${usd(sum,0)}</text></svg>
+      <div class="legend">${legend}</div>
+    </div>
+    ${items.length>1&&top.p>=50&&!top.other?`<p class="warn">${esc(top.k)} 비중이 ${top.p.toFixed(0)}%로 한 종목에 절반 이상 몰려 있습니다.</p>`:''}
+  </div>`;
+}
+
 function vHold(){
   const t=totals(),f=fx();
   const list=Object.keys(S.stocks).map(k=>{const c=calc(S.stocks[k]);
@@ -175,6 +224,7 @@ function vHold(){
       <div class="kv"><div class="label">매입금액 / 실현손익</div><div class="v num">${usd(t.c)}<br><span class="${cls(t.r)}" style="font-size:14px">${usd(t.r)}</span></div></div>
     </div>
   </div>
+  ${allocChart()}
   ${list||'<div class="card empty">아래에서 첫 종목을 추가하세요.</div>'}
   <form class="card stack" id="addTk">
     <h2 style="margin:0">종목 추가</h2>
@@ -303,6 +353,7 @@ document.addEventListener('click',e=>{
   if(b.dataset.go)return go(b.dataset.go);
   if(b.dataset.open){S.sel=b.dataset.open;save();return go('stock')}
   if(b.dataset.sel){S.sel=b.dataset.sel;save();return render()}
+  if(b.dataset.basis){basis=b.dataset.basis;try{localStorage.setItem('avgcost.basis',basis)}catch(e){}const y=scrollY;render();scrollTo(0,y);return}
   if(b.dataset.tt){txType=b.dataset.tt;const q=$('#txQ').value,p=$('#txP').value,d=$('#txD').value,f=$('#txF').value;render();$('#txQ').value=q;$('#txP').value=p;$('#txD').value=d;$('#txF').value=f;return}
   if(b.dataset.del!=null)return arm(b,'확인',()=>{S.stocks[S.sel].tx.splice(+b.dataset.del,1);save();render();toast('삭제했습니다')});
   switch(b.id){
