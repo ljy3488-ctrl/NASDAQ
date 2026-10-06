@@ -1,6 +1,6 @@
 {
-  "name": "미국주식 평단 계산기",
-  "short_name": "평단 계산기",
+  "name": "쭈식관리",
+  "short_name": "쭈식관리",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
