@@ -124,6 +124,8 @@ textarea{width:100%;min-height:100px;font-family:var(--mono);font-size:12px;colo
 .ipo{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:12px 0;border-top:1px solid var(--line)}
 .ipo:first-child{border-top:0}
 .ipo .n{font-weight:600}
+.ipr{display:block;font-size:12px;font-weight:600;color:var(--muted);text-align:right}
+.ipr.up{color:var(--up)}.ipr.down{color:var(--down)}
 .ipo .v{font-family:var(--mono);font-weight:600;text-align:right}
 .ipo .meta{font-size:12px;color:var(--muted)}
 .ipo .act{text-align:right}
@@ -277,8 +279,8 @@ function buildView(){
   const h=[['티커','수량','평단($)','현재가($)','매입금액($)','평가금액($)','손익($)','수익률(%)','실현손익($)']];
   for(const k in S.stocks){const c=calc(S.stocks[k]);h.push([k,+c.sh.toFixed(6),+c.avg.toFixed(4),+S.stocks[k].price||'',+c.cost.toFixed(2),+c.val.toFixed(2),+c.pl.toFixed(2),+c.plp.toFixed(2),+c.realized.toFixed(2)])}
   const cu=cashUsd();if(cu>0)h.push(['현금','','','','',+cu.toFixed(2),'','','']);
-  const ip=[['매도일','종목','증권사','수량','공모가','매도가','수수료·세금','수익금(원)']];
-  (S.ipo||[]).slice().sort((a,b)=>a.d<b.d?-1:1).forEach(x=>ip.push([x.d,x.n,x.b||'',x.q||'',x.op||'',x.sp||'',x.f||'',x.pl]));
+  const ip=[['매도일','종목','증권사','수량','공모가','매도가','수수료·세금','수익금(원)','수익률(%)']];
+  (S.ipo||[]).slice().sort((a,b)=>a.d<b.d?-1:1).forEach(x=>ip.push([x.d,x.n,x.b||'',x.q||'',x.op||'',x.sp||'',x.f||'',x.pl,ipoRate(x)==null?'':+ipoRate(x).toFixed(2)]));
   return {'보유현황':h,'공모주':ip};
 }
 async function api(method,body,extra=''){
@@ -745,6 +747,10 @@ function sim(){
 /* 공모주: 원화 수익 기록. 공모가·매도가·수량을 넣으면 수익금 자동 계산 */
 let ipoYear='all';
 const won=n=>(n<0?'-':'')+Math.round(Math.abs(n)).toLocaleString('ko-KR')+'원';
+/* 공모주 수익률: 수익금 ÷ 투자금(공모가×수량). 공모가·수량이 없으면 계산하지 않음 */
+const ipoCost=x=>(+x.op||0)*(+x.q||0);
+const ipoRate=x=>ipoCost(x)>0?x.pl/ipoCost(x)*100:null;
+const rateTxt=r=>r==null?'':`${r>0?'+':''}${r.toFixed(1)}%`;
 function vIpo(){
   const all=S.ipo.map((x,i)=>({...x,i})).sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:b.i-a.i);
   const years=[...new Set(all.map(x=>x.d.slice(0,4)))].sort().reverse();
@@ -752,24 +758,28 @@ function vIpo(){
   const rows=ipoYear==='all'?all:all.filter(x=>x.d.startsWith(ipoYear));
   const sum=rows.reduce((a,x)=>a+x.pl,0),win=rows.filter(x=>x.pl>0).length;
   const best=rows.reduce((m,x)=>!m||x.pl>m.pl?x:m,null);
+  const rated=rows.filter(x=>ipoCost(x)>0),inv=rated.reduce((a,x)=>a+ipoCost(x),0),wRate=inv?rated.reduce((a,x)=>a+x.pl,0)/inv*100:null;
+  const bestR=rated.reduce((m,x)=>!m||ipoRate(x)>ipoRate(m)?x:m,null);
   const cy=today().slice(0,4),thisYear=all.filter(x=>x.d.startsWith(cy)).reduce((a,x)=>a+x.pl,0);
   let monthly='';
   if(ipoYear!=='all'){const m=Array(12).fill(0);rows.forEach(x=>m[+x.d.slice(5,7)-1]+=x.pl);const mx=Math.max(1,...m.map(Math.abs));
     monthly=`<div class="label" style="margin-top:14px">${ipoYear}년 월별</div><div class="months">${m.map((v,i)=>`<div class="m" title="${i+1}월 ${won(v)}"><i class="${v<0?'neg':''}" style="height:${Math.round(Math.abs(v)/mx*62)}px"></i><span>${i+1}</span></div>`).join('')}</div>`}
   const list=rows.map(x=>`<div class="ipo">
-      <span class="n">${esc(x.n)}</span><span class="v ${cls(x.pl)}">${x.pl>0?'+':''}${won(x.pl)}</span>
+      <span class="n">${esc(x.n)}</span><span class="v ${cls(x.pl)}">${x.pl>0?'+':''}${won(x.pl)}${ipoRate(x)!=null?`<span class="ipr ${cls(x.pl)}">${rateTxt(ipoRate(x))}</span>`:''}</span>
       <span class="meta num">${x.d}${x.b?' · '+esc(x.b):''}${x.q?` · ${x.q.toLocaleString()}주`:''}${x.op&&x.sp?` · ${x.op.toLocaleString()}→${x.sp.toLocaleString()}원`:''}</span>
       <span class="act"><button class="x" data-ipodel="${x.i}">삭제</button></span></div>`).join('');
   return `<div class="ychips"><button class="chip" data-year="all" aria-pressed="${ipoYear==='all'}">전체</button>${years.map(y=>`<button class="chip" data-year="${y}" aria-pressed="${ipoYear===y}">${y}</button>`).join('')}</div>
   <div class="card">
     <div class="label">${ipoYear==='all'?'누적 공모주 수익':ipoYear+'년 공모주 수익'}</div>
     <div class="big num ${cls(sum)}">${sum>0?'+':''}${won(sum)}</div>
+    <div class="muted num" style="font-size:13px">건당 평균 ${rows.length?won(sum/rows.length):'—'}${inv?` · 투자금 ${won(inv)} 기준`:''}</div>
     <div class="row2" style="margin-top:14px">
       <div class="kv"><div class="label">참여 / 수익 건수</div><div class="v num">${rows.length}건 / ${win}건</div></div>
-      <div class="kv"><div class="label">건당 평균</div><div class="v num">${rows.length?won(sum/rows.length):'—'}</div></div>
+      <div class="kv"><div class="label">평균 수익률</div><div class="v num ${wRate==null?'':cls(wRate)}">${wRate==null?'—':rateTxt(wRate)}</div></div>
       <div class="kv"><div class="label">최고 수익</div><div class="v" style="font-size:14px">${best?esc(best.n)+' <span class="num '+cls(best.pl)+'">'+won(best.pl)+'</span>':'—'}</div></div>
-      <div class="kv"><div class="label">올해 (${cy})</div><div class="v num ${cls(thisYear)}">${won(thisYear)}</div></div>
+      <div class="kv"><div class="label">최고 수익률</div><div class="v" style="font-size:14px">${bestR?esc(bestR.n)+' <span class="num '+cls(bestR.pl)+'">'+rateTxt(ipoRate(bestR))+'</span>':'—'}</div></div>
     </div>
+    ${ipoYear==='all'?`<div class="muted num" style="font-size:13px;margin-top:10px">올해(${cy}) <span class="${cls(thisYear)}">${thisYear>0?'+':''}${won(thisYear)}</span></div>`:''}
     ${monthly}
   </div>
   <form class="card stack" id="ipoForm">
@@ -782,7 +792,7 @@ function vIpo(){
       <label class="f">수량 (주)<input id="iQ" class="num ic" type="number" inputmode="numeric" min="0" placeholder="선택"></label>
       <label class="f">수수료·세금 (원)<input id="iF" class="num ic" type="number" inputmode="numeric" min="0" placeholder="선택"></label>
     </div>
-    <label class="f">수익금 (원)<input id="iPl" class="num" type="number" inputmode="numeric" step="1" required placeholder="공모가·매도가·수량을 넣으면 자동 계산"></label>
+    <label class="f">수익금 (원) <span id="iRate" class="ipr" style="margin:0"></span><input id="iPl" class="num" type="number" inputmode="numeric" step="1" required placeholder="공모가·매도가·수량을 넣으면 자동 계산"></label>
     <label class="f">증권사 (선택)<input id="iB" placeholder="예: NH, 한투" autocomplete="off"></label>
     <button class="btn">기록하기</button>
     <p class="note">수익금만 바로 적어도 됩니다. 손실이면 앞에 -를 붙이세요.</p>
@@ -902,6 +912,8 @@ document.addEventListener('input',e=>{
   if(['sQ','sP','tA','tP'].includes(id))sim();
   if(e.target.classList.contains('ic')){const op=+$('#iOp').value,sp=+$('#iSp').value,q=+$('#iQ').value,f=+$('#iF').value||0;
     if(op>0&&sp>0&&q>0)$('#iPl').value=Math.round((sp-op)*q-f)}
+  if(e.target.classList.contains('ic')||id==='iPl'){const op=+$('#iOp').value,q=+$('#iQ').value,pl=$('#iPl').value,el=$('#iRate');
+    if(el){const r=op>0&&q>0&&pl!==''?(+pl)/(op*q)*100:null;el.textContent=r==null?'':'수익률 '+rateTxt(r);el.className='ipr '+(r==null?'':cls(r))}}
 });
 document.addEventListener('change',e=>{
   if(e.target.id==='autoFx'){S.autoFx=e.target.checked;if(S.autoFx)applyQuotes();save();render();return}
