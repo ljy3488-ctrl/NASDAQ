@@ -130,6 +130,7 @@ textarea{width:100%;min-height:100px;font-family:var(--mono);font-size:12px;colo
 .ipo .meta{font-size:12px;color:var(--muted)}
 .ipo .act{text-align:right}
 nav button{font-size:10.5px}
+nav button svg{width:22px;height:22px}
 
 /* sync */
 .sdot{width:12px;height:12px;border-radius:50%;border:0;padding:0;cursor:pointer;background:var(--muted)}
@@ -230,10 +231,10 @@ button.hcard:active{background:var(--accent-soft)}
 .schip{font:inherit;font-size:12.5px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:3px 10px;cursor:pointer;display:inline-flex;align-items:center;font-variant-numeric:tabular-nums}
 .card{border-radius:16px}
 
-.ro #addToggle,.ro #addTk,.ro .x,.ro #toggleForm,.ro #txForm,.ro #delTk,.ro #ipoForm,.ro #cashToggle .lm,.ro .cashedit,.ro #priceLab,.ro #nameLab,.ro #resetGo,.ro #restoreBtn,.ro #restoreBox{display:none!important}
+.ro #addToggle,.ro #addTk,.ro .x,.ro #toggleForm,.ro #txForm,.ro #delTk,.ro #ipoForm,.ro #fxForm,.ro #cashToggle .lm,.ro .cashedit,.ro #priceLab,.ro #nameLab,.ro #resetGo,.ro #restoreBtn,.ro #restoreBox{display:none!important}
 
 /* bottom tab bar */
-nav{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--panel);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--panel);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{font:inherit;font-size:11px;background:none;border:0;color:var(--muted);padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
 nav button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 nav button[aria-current="page"]{color:var(--accent);font-weight:700}
@@ -247,6 +248,7 @@ nav button[aria-current="page"]{color:var(--accent);font-weight:700}
   <button data-tab="hold"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10M7 17h6"/></svg>보유</button>
   <button data-tab="stock"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16"/><path d="M7 15l4-4 3 3 5-6"/></svg>종목</button>
   <button data-tab="sim"><svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M5 12H3M21 12h-2"/><circle cx="12" cy="12" r="5"/></svg>물타기</button>
+  <button data-tab="fx"><svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>환전</button>
   <button data-tab="ipo"><svg viewBox="0 0 24 24"><path d="M4 8h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z"/><path d="M14 8v12" stroke-dasharray="2 2"/></svg>공모주</button>
   <button data-tab="set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>설정</button>
 </nav>
@@ -296,7 +298,9 @@ function buildView(){
   const cu=cashUsd();if(cu>0)h.push(['현금','','','','',+cu.toFixed(2),'','','']);
   const ip=[['매도일','종목','증권사','수량','공모가','매도가','수수료·세금','수익금(원)','수익률(%)']];
   (S.ipo||[]).slice().sort((a,b)=>a.d<b.d?-1:1).forEach(x=>ip.push([x.d,x.n,x.b||'',x.q||'',x.op||'',x.sp||'',x.f||'',x.pl,ipoRate(x)==null?'':+ipoRate(x).toFixed(2)]));
-  return {'보유현황':h,'공모주':ip};
+  const fxv=[['날짜','구분','원화','달러','환율','수수료(원)','실현 환차익(원)','메모']];
+  calcFx().rows.forEach(x=>fxv.push([x.d,x.t==='buy'?'원→달러':'달러→원',x.krw,x.usd,+x.rate.toFixed(2),x.f||'',x.rp==null?'':Math.round(x.rp),x.m||'']));
+  return {'보유현황':h,'공모주':ip,'환전':fxv};
 }
 async function api(method,body,extra=''){
   const opt=method==='POST'?{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)}:{};
@@ -582,17 +586,18 @@ function calc(st){
 }
 function totals(){let c=0,v=0,r=0;for(const k in S.stocks){const x=calc(S.stocks[k]);c+=x.cost;v+=x.val;r+=x.realized}return{c,v,r,pl:v-c,plp:c?(v-c)/c*100:0}}
 
-const TITLES={hold:'쭈식관리',stock:'종목 상세',sim:'물타기 계산',ipo:'공모주 수익',set:'설정'};
+const TITLES={hold:'쭈식관리',stock:'종목 상세',sim:'물타기 계산',ipo:'공모주 수익',fx:'환전 기록',set:'설정'};
 function render(){
   if(!S.cash)S.cash={usd:0,krw:0};
   if(!Array.isArray(S.ipo))S.ipo=[];
+  if(!Array.isArray(S.fxl))S.fxl=[];
   const tks=Object.keys(S.stocks);
   if(!S.stocks[S.sel])S.sel=tks[0]||null;
   document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===tab?'page':'false'));
   $('#ttl').textContent=TITLES[tab];
   $('#hdr').innerHTML=statusChip();
   document.body.classList.toggle('ro',!!SY.ro);
-  $('#main').innerHTML=connectCard()+conflictCard()+({hold:vHold,stock:vStock,sim:vSim,ipo:vIpo,set:vSet})[tab]();
+  $('#main').innerHTML=connectCard()+conflictCard()+({hold:vHold,stock:vStock,sim:vSim,ipo:vIpo,fx:vFx,set:vSet})[tab]();
   paintSync();
   if(tab==='hold'||tab==='stock')setTimeout(()=>queueNews(false),1500);
   if(tab==='hold')setTimeout(loadNames,1200);
@@ -926,6 +931,59 @@ function vIpo(){
   </div>`;
 }
 
+/* ===== 환전 기록 =====
+   buy: 원화 → 달러 (원화 지불, 달러 받음) / sell: 달러 → 원화
+   달러 평단(평균 환율)은 주식과 같은 이동평균법. 수수료(원)는 살 때 원가에 더하고, 팔 때 받은 원화에서 뺌 */
+let fxType='buy',fxEdits=[];
+function calcFx(){
+  let held=0,cost=0,realized=0,bk=0,bu=0,sk=0,su=0;
+  const rows=(S.fxl||[]).map((x,i)=>({...x,i})).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:a.i-b.i).map(x=>{
+    const f=+x.f||0;x.rate=x.usd?x.krw/x.usd:0;
+    if(x.t==='buy'){held+=x.usd;cost+=x.krw+f;bk+=x.krw;bu+=x.usd;x.rp=null}
+    else{const avg=held?cost/held:0,q=Math.min(x.usd,held);x.rp=(x.krw-f)-avg*q;realized+=x.rp;cost-=avg*q;held-=q;if(held<1e-9){held=0;cost=0}sk+=x.krw;su+=x.usd}
+    x.held=held;x.avg=held?cost/held:0;return x});
+  return{held,cost,avg:held?cost/held:0,realized,rows,bk,bu,sk,su};
+}
+const rateTx=r=>'₩'+r.toLocaleString('ko-KR',{minimumFractionDigits:2,maximumFractionDigits:2});
+function vFx(){
+  const c=calcFx(),now=fx(),unreal=now&&c.held?now*c.held-c.cost:null,ur=unreal!=null&&c.cost?unreal/c.cost*100:null;
+  const list=[...c.rows].reverse().map(x=>`<div class="tx">
+      <span class="pill ${x.t==='buy'?'buy':'sell'}">${x.t==='buy'?'원→달러':'달러→원'}</span>
+      <span class="main">${usd(x.usd)} ${x.t==='buy'?'←':'→'} ${krw(x.krw)}</span>
+      <button class="x" data-fxdel="${x.i}">삭제</button>
+      <span class="meta num">${x.d} · 환율 ${rateTx(x.rate)}${x.f?' · 수수료 '+krw(+x.f):''}${x.m?' · '+esc(x.m):''}${x.rp!=null?` · 환차익 <span class="${cls(x.rp)}">${sg(x.rp)}${krw(x.rp)}</span>`:''}</span>
+    </div>`).join('');
+  return `<div class="card">
+    <div class="label">환전해서 보유 중인 달러</div>
+    <div class="big num">${usd(c.held)}</div>
+    <div class="muted num" style="font-size:13px">평균 환율 ${c.held?rateTx(c.avg):'—'}${c.held?` · 원화 원가 ${krw(c.cost)}`:''}</div>
+    <div class="row2" style="margin-top:14px">
+      <div class="kv"><div class="label">평가 환차익${now?` (현재 ${rateTx(now)})`:''}</div><div class="v num ${unreal==null?'':cls(unreal)}">${unreal==null?(now?'—':'<span class="note">설정에서 환율 필요</span>'):sg(unreal)+krw(unreal)}${ur!=null?`<span style="font-size:13px"> (${sg(ur)}${ur.toFixed(2)}%)</span>`:''}</div></div>
+      <div class="kv"><div class="label">실현 환차익</div><div class="v num ${cls(c.realized)}">${sg(c.realized)}${krw(c.realized)}</div></div>
+      <div class="kv"><div class="label">원→달러 합계</div><div class="v num" style="font-size:14px">${usd(c.bu,0)} <span class="muted">(${krw(c.bk)})</span></div></div>
+      <div class="kv"><div class="label">달러→원 합계</div><div class="v num" style="font-size:14px">${usd(c.su,0)} <span class="muted">(${krw(c.sk)})</span></div></div>
+    </div>
+  </div>
+  <form class="card stack" id="fxForm">
+    <h2 style="margin:0">환전 기록하기</h2>
+    <div class="seg"><button type="button" class="b" data-fxt="buy" aria-pressed="${fxType==='buy'}">원 → 달러</button><button type="button" class="s" data-fxt="sell" aria-pressed="${fxType==='sell'}">달러 → 원</button></div>
+    <div class="row2">
+      <label class="f">${fxType==='buy'?'낸 원화 (₩)':'받은 원화 (₩)'}<input id="fxK" class="num" type="number" inputmode="numeric" step="1" min="0" placeholder="1,352,000"></label>
+      <label class="f">${fxType==='buy'?'받은 달러 ($)':'바꾼 달러 ($)'}<input id="fxU" class="num" type="number" inputmode="decimal" step="any" min="0" placeholder="1000"></label>
+      <label class="f">환율 (₩/$)<input id="fxR" class="num" type="number" inputmode="decimal" step="any" min="0" placeholder="${now?now.toFixed(2):'1352.00'}"></label>
+      <label class="f">날짜<input id="fxD" type="date" value="${today()}" required></label>
+      <label class="f">수수료 (₩, 선택)<input id="fxF" class="num" type="number" inputmode="numeric" step="1" min="0" placeholder="0"></label>
+      <label class="f">메모 (선택)<input id="fxM" placeholder="예: NH 환전우대" autocomplete="off"></label>
+    </div>
+    <button class="btn">기록하기</button>
+    <p class="note">원화·달러·환율 중 두 개만 넣으면 나머지는 자동으로 계산됩니다.</p>
+  </form>
+  <div class="card">
+    <h2>환전 내역</h2>
+    ${list||'<p class="empty">아직 환전 기록이 없습니다.</p>'}
+  </div>`;
+}
+
 function vSet(){
   return `<div class="card stack">
     <h2 style="margin:0">다른 기기 연결</h2>
@@ -987,6 +1045,8 @@ document.addEventListener('click',e=>{
   if(b.dataset.basis){basis=b.dataset.basis;try{localStorage.setItem('avgcost.basis',basis)}catch(e){}const y=scrollY;render();scrollTo(0,y);return}
   if(b.dataset.tt){txType=b.dataset.tt;const q=$('#txQ').value,p=$('#txP').value,d=$('#txD').value,f=$('#txF').value;render();$('#txQ').value=q;$('#txP').value=p;$('#txD').value=d;$('#txF').value=f;return}
   if(b.dataset.year){ipoYear=b.dataset.year;return render()}
+  if(b.dataset.fxt){fxType=b.dataset.fxt;const v=['fxK','fxU','fxR','fxD','fxF','fxM'].map(i=>$('#'+i).value);render();['fxK','fxU','fxR','fxD','fxF','fxM'].forEach((i,n)=>$('#'+i).value=v[n]);return}
+  if(b.dataset.fxdel!=null)return arm(b,'확인',()=>{S.fxl.splice(+b.dataset.fxdel,1);save();render();toast('삭제했습니다')});
   if(b.dataset.ipodel!=null)return arm(b,'확인',()=>{S.ipo.splice(+b.dataset.ipodel,1);save();render();toast('삭제했습니다')});
   if(b.dataset.del!=null)return arm(b,'확인',()=>{S.stocks[S.sel].tx.splice(+b.dataset.del,1);save();render();toast('삭제했습니다')});
   if(b.dataset.sync==='remote'){S=conflict.data;applyQuotes();SY.updated=conflict.updated;SY.dirty=false;SY.last=Date.now();conflict=null;store();saveSY();setSync('ok');render();return toast('시트 데이터로 맞췄습니다')}
@@ -1028,6 +1088,11 @@ document.addEventListener('submit',e=>{
   e.preventDefault();
   if(e.target.id==='addTk'){const t=$('#newTk').value.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g,'');if(!t)return;
     if(!S.stocks[t])S.stocks[t]={price:0,tx:[]};S.sel=t;addOpen=false;setTimeout(()=>{refreshQuotes(true);liveTick(true)},300);S.sample=false;formOpen=true;save();go('stock');toast(t+' 추가됨')}
+  if(e.target.id==='fxForm'){const k=Math.round(+$('#fxK').value),u=+$('#fxU').value;
+    if(!(k>0&&u>0))return toast('원화와 달러 금액(또는 환율)을 넣으세요');
+    if(fxType==='sell'&&u>calcFx().held+1e-6)toast('기록된 환전 달러보다 많이 바꿨어요. 그대로 저장합니다');
+    S.fxl.push({d:$('#fxD').value||today(),t:fxType,krw:k,usd:+u.toFixed(2),f:Math.round(+$('#fxF').value||0),m:$('#fxM').value.trim()});
+    fxEdits=[];S.sample=false;save();render();toast('환전을 기록했습니다');return}
   if(e.target.id==='ipoForm'){const n=$('#iN').value.trim(),pl=Math.round(+$('#iPl').value);
     if(!n||!isFinite(pl)||$('#iPl').value==='')return toast('종목명과 수익금을 입력하세요');
     const num=id=>+$(id).value||0;
@@ -1045,6 +1110,13 @@ document.addEventListener('input',e=>{
   if(id==='cashUsd'){S.cash.usd=Math.max(0,+e.target.value||0);save()}
   if(id==='cashKrw'){S.cash.krw=Math.max(0,+e.target.value||0);save()}
   if(['sQ','sP','tA','tP'].includes(id))sim();
+  if(['fxK','fxU','fxR'].includes(id)){
+    fxEdits=fxEdits.filter(x=>x!==id);if(e.target.value!=='')fxEdits.push(id);fxEdits=fxEdits.slice(-2);
+    if(fxEdits.length===2){const K=$('#fxK'),U=$('#fxU'),R=$('#fxR'),miss=['fxK','fxU','fxR'].find(x=>!fxEdits.includes(x));
+      const k=+K.value,u=+U.value,r=+R.value;
+      if(miss==='fxK'&&u>0&&r>0)K.value=Math.round(u*r);
+      if(miss==='fxU'&&k>0&&r>0)U.value=(k/r).toFixed(2);
+      if(miss==='fxR'&&k>0&&u>0)R.value=(k/u).toFixed(2);}}
   if(e.target.classList.contains('ic')){const op=+$('#iOp').value,sp=+$('#iSp').value,q=+$('#iQ').value,f=+$('#iF').value||0;
     if(op>0&&sp>0&&q>0)$('#iPl').value=Math.round((sp-op)*q-f)}
   if(id==='iN'){const h=ipoFind(e.target.value),op=$('#iOp'),hint=$('#iHint');
