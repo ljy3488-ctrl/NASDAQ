@@ -644,7 +644,7 @@ function allocChart(){
   </div>`;
 }
 
-let addOpen=false,cashOpen=false;
+let addOpen=false,cashOpen=false,closedOpen=false;
 let HV={m:'total',cur:'usd'};try{Object.assign(HV,JSON.parse(localStorage.getItem('avgcost.hv'))||{})}catch(e){}
 const saveHV=()=>{try{localStorage.setItem('avgcost.hv',JSON.stringify(HV))}catch(e){}};
 const chg=(v,p)=>`<span class="chg ${cls(v)}">${v>0?'▲':v<0?'▼':''} ${Math.abs(p).toFixed(2)}%</span>`;
@@ -701,7 +701,10 @@ function vHold(){
   const rows=Object.keys(S.stocks).map(k=>{const st=S.stocks[k],c=calc(st),l=FH&&LV[k]&&LV[k].c>0?LV[k]:null;
     return{k,st,c,l,td:l?c.sh*l.d:0,tdp:l?l.dp:-1e9,noPrice:!(+st.price)&&c.sh>0}});
   const by={total:(a,b)=>b.c.plp-a.c.plp,today:(a,b)=>b.tdp-a.tdp,weight:(a,b)=>b.c.val-a.c.val}[HV.m];
-  rows.sort((a,b)=>(a.c.sh>0?0:1)-(b.c.sh>0?0:1)||by(a,b));
+  const closed=rows.filter(r=>r.c.sh<=0&&r.st.tx.length).sort((a,b)=>b.c.realized-a.c.realized);
+  const open=rows.filter(r=>!(r.c.sh<=0&&r.st.tx.length)).sort(by);
+  const closedPL=closed.reduce((a,r)=>a+r.c.realized,0);
+  rows.length=0;rows.push(...open);
   const n=rows.length,dp=FH&&dayPL();
   const metric=r=>{
     if(r.noPrice)return '<span class="need">현재가 입력</span>';
@@ -749,6 +752,16 @@ function vHold(){
     <div style="display:grid;grid-template-columns:1fr auto;gap:8px"><input id="newTk" placeholder="티커 입력 (예: TSLA)" maxlength="10" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase"><button class="btn" style="width:auto">추가</button></div>
   </form>
   <div class="card list">${list}${cashRow}</div>
+  ${closed.length?`<div class="card list">
+    <button class="lrow" id="closedToggle" type="button">
+      <span class="ll"><span class="lt"><span class="lname">매도 완료 ${closed.length}종목</span></span><span class="ls">지금은 보유하지 않는 종목 · 실현손익 기록용</span></span>
+      <span class="lr"><span class="lv ${cls(closedPL)}">${sg(closedPL)}${M(closedPL,Math.abs(closedPL)>=100?0:2)}</span><span class="lm muted">${closedOpen?'접기 ▲':'펼치기 ▼'}</span></span>
+    </button>
+    ${closedOpen?closed.map(r=>{const nm=nameOf(r.k);return `<button class="lrow" data-open="${esc(r.k)}">
+      <span class="ll"><span class="lt"><span class="lname">${esc(nm||r.k)}</span></span><span class="ls">${nm?`<b class="lnm">${esc(r.k)}</b> · `:''}매매 ${r.st.tx.length}건</span></span>
+      <span class="lr"><span class="lv ${cls(r.c.realized)}" style="font-size:14px">${sg(r.c.realized)}${M(r.c.realized,Math.abs(r.c.realized)>=100?0:2)}</span><span class="lm muted">실현손익</span></span>
+    </button>`}).join(''):''}
+  </div>`:''}
   ${n?allocBar(rows,cu,total,CM):''}`;
 }
 
@@ -1087,6 +1100,7 @@ document.addEventListener('click',e=>{
   if(b.id==='fhOff'){FH='';LV={};lvAt=0;clearTimeout(lvTimer);try{localStorage.removeItem('avgcost.fh');localStorage.removeItem('avgcost.lv')}catch(e){}render();toast('실시간 시세를 해제했습니다');return}
   if(b.id==='qRefresh'){if(FH)liveTick(true);return refreshQuotes(true)}
   if(b.id==='addToggle'){addOpen=!addOpen;render();if(addOpen)$('#newTk')?.focus();return}
+  if(b.id==='closedToggle'){closedOpen=!closedOpen;const y=scrollY;render();scrollTo(0,y);return}
   if(b.id==='cashToggle'){cashOpen=!cashOpen;render();if(cashOpen)$('#cashUsd')?.focus();return}
   switch(b.id){
     case 'syOn':case 'syNow':{const u=$('#syUrl').value.trim(),k=$('#syKey').value.trim();
