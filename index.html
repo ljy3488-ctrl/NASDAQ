@@ -773,7 +773,7 @@ function vStock(){
       <span class="pill ${r.t}">${r.t==='buy'?'매수':'매도'}</span>
       <span class="main">${qf(r.q)}주 × ${usd(r.p)}</span>
       <button class="x" data-del="${r.i}">삭제</button>
-      <span class="meta num">${r.d}${r.f?' · 수수료 '+usd(+r.f):''} · 거래 후 ${qf(r.sh)}주, 평단 ${usd(r.avg)}${r.rp!=null?` · 실현 <span class="${cls(r.rp)}">${usd(r.rp)}</span>`:''}</span>
+      <span class="meta num">${r.src==='nh-open'?'<b>기초 잔고</b>(조회 기간 이전 매수분) · ':r.src==='nh'?'나무증권 · ':''}${r.d}${r.f?' · 수수료 '+usd(+r.f):''}${r.fx?' · 환율 '+(+r.fx).toLocaleString('ko-KR'):''} · 거래 후 ${qf(r.sh)}주, 평단 ${usd(r.avg)}${r.rp!=null?` · 실현 <span class="${cls(r.rp)}">${usd(r.rp)}</span>`:''}</span>
     </div>`).join('');
   return `${chips()}
   <div class="card">
@@ -992,7 +992,7 @@ async function nhSync(){
   try{
     if(SY.dirty){await push(false)}
     const r=await api('GET',null,'&action=nhsync');
-    if(r.ok){toast(`나무증권 보유종목 ${r.count}개를 불러왔습니다${r.changed?` (변경 ${r.changed}개)`:''}`);nhBusy=false;await pull();render();return}
+    if(r.ok){toast(r.trades!=null?`나무증권 보유 ${r.count}종목 · 거래 ${r.trades}건을 불러왔습니다`:`나무증권 보유종목 ${r.count}개를 불러왔습니다`);nhBusy=false;await pull();render();return}
     toast(r.error==='nh'?r.message:r.error==='key'?'비밀 키가 맞지 않습니다':'Apps Script를 새 버전으로 배포해야 합니다');
   }catch(e){toast('나무증권에서 불러오지 못했습니다')}
   nhBusy=false;render();
@@ -1000,7 +1000,7 @@ async function nhSync(){
 function vSet(){
   return `${syncOn()&&!SY.ro?`<div class="card stack">
     <h2 style="margin:0">나무증권 연동</h2>
-    <p class="note">나무증권 해외주식 잔고(종목·수량·평단)와 예수금을 불러옵니다. 수량이나 평단이 바뀐 종목만 갱신하고, 다른 증권사 종목은 그대로 둬요.${S.nhAt?` 마지막으로 불러온 시각: ${new Date(S.nhAt).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</p>
+    <p class="note">나무증권 해외주식 잔고·예수금과 <b>매수·매도 거래내역(최근 10년)</b>을 불러옵니다. 나무증권 종목의 거래 기록은 실제 체결 기준으로 바뀌고, 다른 증권사 종목은 그대로 둬요. 30초쯤 걸릴 수 있어요.${S.nhAt?` 마지막으로 불러온 시각: ${new Date(S.nhAt).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</p>
     <button class="btn" id="nhGo" type="button" ${nhBusy?'disabled':''}>${nhBusy?'불러오는 중…':'나무증권에서 불러오기'}</button>
   </div>`:''}
   <div class="card stack">
