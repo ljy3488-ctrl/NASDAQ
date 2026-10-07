@@ -678,7 +678,7 @@ function vHold(){
   const warn=FH?lvMsg:qMsg;
   const showAdd=addOpen||!n;
   const seg=[['total','수익률'],...(FH?[['today','오늘']]:[]),['weight','비중']];
-  return `${S.sample?'<p class="sample">예시 데이터입니다. 설정 탭의 초기화로 지우고 실제 종목을 넣으세요.</p>':''}
+  return `${S.sample?'<p class="sample split">예시 데이터입니다. 실제 종목을 넣기 전에 지워 주세요.<button class="linkbtn" id="clearSample" type="button">예시 지우기</button></p>':''}
   <section class="hero2">
     <div class="split"><span class="label">내 자산${cu>0?' · 현금 포함':''}</span>
       ${f?`<div class="seg mini"><button type="button" data-cur="usd" aria-pressed="${HV.cur==='usd'}">$</button><button type="button" data-cur="krw" aria-pressed="${HV.cur==='krw'}">₩</button></div>`:''}</div>
@@ -921,11 +921,6 @@ function vSet(){
     <button class="ghost" id="restoreBtn">붙여넣어 복원</button>
     <div id="restoreBox" class="stack" hidden><textarea id="restoreTxt" placeholder="복사해 둔 데이터를 붙여넣으세요"></textarea><button class="btn" id="restoreGo">복원하기</button></div>
   </div>
-  <div class="card stack">
-    <h2 style="margin:0">초기화</h2>
-    <p class="note">모든 종목과 거래 기록을 지웁니다. 환율은 남습니다.</p>
-    <button class="ghost danger" id="resetGo">전부 지우기</button>
-  </div>
   <p class="note" style="padding:0 4px">평단은 이동평균법으로 계산합니다. 매수 수수료는 평단에 포함되고, 매도해도 남은 주식의 평단은 바뀌지 않습니다.</p>`;
 }
 
@@ -947,6 +942,7 @@ document.addEventListener('click',e=>{
   if(b.dataset.sync==='remote'){S=conflict.data;applyQuotes();SY.updated=conflict.updated;SY.dirty=false;SY.last=Date.now();conflict=null;store();saveSY();setSync('ok');render();return toast('시트 데이터로 맞췄습니다')}
   if(b.dataset.sync==='local'){conflict=null;render();push(true);return toast('이 기기 데이터로 덮어씁니다')}
   if(b.id==='syncDot')return go('set');
+  if(b.id==='clearSample'){if(!S.sample)return;S={fx:S.fx,sel:null,stocks:{},ipo:[],cash:{usd:0,krw:0},sample:false};store();render();toast('예시 데이터를 지웠습니다');return}
   if(b.id==='cnYes'&&PEND)return applyConnect(PEND);
   if(b.id==='cnNo'){PEND=null;return render()}
   if(b.id==='lkGo'){const o=parseConnect($('#lkIn').value);if(!o)return toast('연결 링크가 올바르지 않습니다. 링크 전체를 붙여넣으세요');PEND=o;go('hold');return}
@@ -976,7 +972,6 @@ document.addEventListener('click',e=>{
     case 'cpy':{const t=JSON.stringify(S);(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('복사했습니다')).catch(()=>{$('#restoreBox').hidden=false;$('#restoreTxt').value=t;$('#restoreTxt').select();toast('선택된 텍스트를 직접 복사하세요')});break}
     case 'restoreBtn':$('#restoreBox').hidden=!$('#restoreBox').hidden;break;
     case 'restoreGo':try{const n=JSON.parse($('#restoreTxt').value);if(!n||!n.stocks)throw 0;S=n;S.sample=false;save();go('hold');toast('복원했습니다')}catch(_){toast('형식이 맞지 않습니다')}break;
-    case 'resetGo':arm(b,'한 번 더 누르면 전부 지워집니다',()=>{S={fx:S.fx,sel:null,stocks:{},ipo:[]};save();go('hold');toast('초기화했습니다')});break;
   }
 });
 document.addEventListener('submit',e=>{
