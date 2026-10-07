@@ -751,7 +751,35 @@ const won=n=>(n<0?'-':'')+Math.round(Math.abs(n)).toLocaleString('ko-KR')+'원';
 const ipoCost=x=>(+x.op||0)*(+x.q||0);
 const ipoRate=x=>ipoCost(x)>0?x.pl/ipoCost(x)*100:null;
 const rateTxt=r=>r==null?'':`${r>0?'+':''}${r.toFixed(1)}%`;
+/* 공모가 목록 (Apps Script가 38커뮤니케이션에서 받아온 [종목명, 확정공모가, 청약일]) — 이 기기에 12시간 저장 */
+let IPL={at:0,list:[]},iplBusy=false;try{Object.assign(IPL,JSON.parse(localStorage.getItem('avgcost.ipl'))||{})}catch(e){}
+const inorm=n=>String(n||'').replace(/\(.*?\)|㈜|주식회사|\s/g,'').toLowerCase();
+function ipoFind(name){
+  const k=inorm(name);if(!k)return null;
+  const ex=IPL.list.filter(x=>inorm(x.n)===k);if(ex.length)return ex[0];
+  const pt=IPL.list.filter(x=>{const n=inorm(x.n);return n.startsWith(k)||k.startsWith(n)});
+  return pt.length===1?pt[0]:null;
+}
+/* 공모가가 빈 기존 기록을 목록으로 채움 */
+function fillIpoPrices(){
+  let n=0;(S.ipo||[]).forEach(x=>{if(!(+x.op)){const h=ipoFind(x.n);if(h){x.op=h.p;n++}}});
+  if(n){save();toast('공모가 '+n+'건을 자동으로 채웠습니다')}
+  return n;
+}
+async function loadIpoList(force){
+  if(!syncOn()||iplBusy)return;
+  if(!force&&IPL.list.length&&Date.now()-IPL.at<12*3600e3){if(fillIpoPrices()&&tab==='ipo')render();return}
+  iplBusy=true;
+  try{const r=await api('GET',null,'&action=ipolist'+(force?'&force=1':''));
+    if(r.ok&&Array.isArray(r.list)&&r.list.length){IPL={at:Date.now(),list:r.list};try{localStorage.setItem('avgcost.ipl',JSON.stringify(IPL))}catch(e){}}}
+  catch(e){}
+  iplBusy=false;
+  fillIpoPrices();
+  if(tab==='ipo'){const dl=$('#ipoNames');if(dl)dl.innerHTML=ipoOptions();const a=document.activeElement;if(!(a&&/INPUT/.test(a.tagName)))render()}
+}
+const ipoOptions=()=>IPL.list.slice(0,200).map(x=>`<option value="${esc(x.n.replace(/\(.*?\)/g,'').trim())}">${x.p.toLocaleString()}원 · ${esc(x.d)}</option>`).join('');
 function vIpo(){
+  setTimeout(()=>loadIpoList(false),300);
   const all=S.ipo.map((x,i)=>({...x,i})).sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:b.i-a.i);
   const years=[...new Set(all.map(x=>x.d.slice(0,4)))].sort().reverse();
   if(ipoYear!=='all'&&!years.includes(ipoYear))ipoYear='all';
@@ -785,7 +813,7 @@ function vIpo(){
   <form class="card stack" id="ipoForm">
     <h2 style="margin:0">수익 기록</h2>
     <div class="row2">
-      <label class="f">종목명<input id="iN" required placeholder="예: OO바이오" autocomplete="off"></label>
+      <label class="f">종목명<input id="iN" required placeholder="예: OO바이오" autocomplete="off" list="ipoNames"><datalist id="ipoNames">${ipoOptions()}</datalist></label>
       <label class="f">매도일<input id="iD" type="date" value="${today()}" required></label>
       <label class="f">공모가 (원)<input id="iOp" class="num ic" type="number" inputmode="numeric" min="0" placeholder="선택"></label>
       <label class="f">매도가 (원)<input id="iSp" class="num ic" type="number" inputmode="numeric" min="0" placeholder="선택"></label>
@@ -795,7 +823,7 @@ function vIpo(){
     <label class="f">수익금 (원) <span id="iRate" class="ipr" style="margin:0"></span><input id="iPl" class="num" type="number" inputmode="numeric" step="1" required placeholder="공모가·매도가·수량을 넣으면 자동 계산"></label>
     <label class="f">증권사 (선택)<input id="iB" placeholder="예: NH, 한투" autocomplete="off"></label>
     <button class="btn">기록하기</button>
-    <p class="note">수익금만 바로 적어도 됩니다. 손실이면 앞에 -를 붙이세요.</p>
+    <p class="note" id="iHint">${syncOn()?(IPL.list.length?'종목명을 입력하면 확정공모가가 자동으로 채워집니다.':'공모가 목록을 불러오는 중입니다…'):'구글 시트를 연결하면 공모가가 자동으로 채워집니다.'} 수익금만 적어도 되고, 손실이면 앞에 -를 붙이세요.</p>
   </form>
   <div class="card">
     <h2>${ipoYear==='all'?'전체 기록':ipoYear+'년 기록'}</h2>
@@ -912,6 +940,10 @@ document.addEventListener('input',e=>{
   if(['sQ','sP','tA','tP'].includes(id))sim();
   if(e.target.classList.contains('ic')){const op=+$('#iOp').value,sp=+$('#iSp').value,q=+$('#iQ').value,f=+$('#iF').value||0;
     if(op>0&&sp>0&&q>0)$('#iPl').value=Math.round((sp-op)*q-f)}
+  if(id==='iN'){const h=ipoFind(e.target.value),op=$('#iOp'),hint=$('#iHint');
+    if(h&&op&&(!op.value||op.dataset.auto)){op.value=h.p;op.dataset.auto='1';op.dispatchEvent(new Event('input',{bubbles:true}))}
+    if(hint&&h)hint.textContent=`확정공모가 ${h.p.toLocaleString()}원 (청약 ${h.d}) 자동 입력. 수량과 매도가를 넣으면 수익금과 수익률이 계산됩니다.`}
+  if(id==='iOp'&&e.isTrusted)delete e.target.dataset.auto;
   if(e.target.classList.contains('ic')||id==='iPl'){const op=+$('#iOp').value,q=+$('#iQ').value,pl=$('#iPl').value,el=$('#iRate');
     if(el){const r=op>0&&q>0&&pl!==''?(+pl)/(op*q)*100:null;el.textContent=r==null?'':'수익률 '+rateTxt(r);el.className='ipr '+(r==null?'':cls(r))}}
 });
