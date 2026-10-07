@@ -219,6 +219,8 @@ button.hcard:active{background:var(--accent-soft)}
 .schip{font:inherit;font-size:12.5px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:3px 10px;cursor:pointer;display:inline-flex;align-items:center;font-variant-numeric:tabular-nums}
 .card{border-radius:16px}
 
+.ro #addToggle,.ro #addTk,.ro .x,.ro #toggleForm,.ro #txForm,.ro #delTk,.ro #ipoForm,.ro #cashToggle .lm,.ro .cashedit,.ro #priceLab,.ro #resetGo,.ro #restoreBtn,.ro #restoreBox{display:none!important}
+
 /* bottom tab bar */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--panel);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{font:inherit;font-size:11px;background:none;border:0;color:var(--muted);padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
@@ -253,7 +255,9 @@ try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 if(!S||!S.stocks)S=JSON.parse(JSON.stringify(SAMPLE));
 try{tab=localStorage.getItem(TABKEY)||'hold'}catch(e){}
 const store=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
-const save=()=>{store();if(syncOn()){SY.dirty=true;SY.rev=(SY.rev||0)+1;saveSY();schedulePush()}};
+const save=()=>{store();if(syncOn()){
+  if(SY.ro){SY.roDirty=true;saveSY();clearTimeout(save.t);save.t=setTimeout(()=>toast('보기 전용이라 바꾼 내용은 저장되지 않습니다'),400);return}
+  SY.dirty=true;SY.rev=(SY.rev||0)+1;saveSY();schedulePush()}};
 
 /* ===== 구글 시트 동기화 =====
    SY: url, key, updated(마지막으로 맞춘 시트 버전), dirty(아직 안 올린 변경), last(마지막 성공 시각) */
@@ -298,6 +302,7 @@ async function push(force){
     const r=await api('POST',{key:SY.key,data:S,base:SY.updated,force:!!force,view:buildView()});
     if(r.ok){SY.updated=r.updated;SY.last=Date.now();if(SY.rev===rev)SY.dirty=false;conflict=null;saveSY();setSync(SY.dirty?'pending':'ok');if(SY.dirty)schedulePush()}
     else if(r.conflict){conflict={data:r.data,updated:r.updated};setSync('conflict');render()}
+    else if(r.error==='readonly'){SY.ro=true;SY.dirty=false;saveSY();setSync('ok');render()}
     else if(r.error==='key')setSync('error','비밀 키가 맞지 않습니다');
     else setSync('error','저장 실패');
   }catch(e){failed(e)}
@@ -309,7 +314,9 @@ async function pull(){
   try{
     const r=await api('GET');busy=false;
     if(!r.ok){setSync('error',r.error==='key'?'비밀 키가 맞지 않습니다':'불러오기 실패');return}
-    if(!r.data){busy=false;return push(true)}                 // 시트가 비어 있으면 이 기기 데이터로 시작
+    const ro=r.role==='view';if(ro!==!!SY.ro){SY.ro=ro;saveSY();setTimeout(render,0)}
+    if(!r.data){if(SY.ro)return setSync('ok');busy=false;return push(true)}                 // 시트가 비어 있으면 이 기기 데이터로 시작
+    if(SY.ro&&(r.updated!==SY.updated||SY.roDirty)){S=r.data;applyQuotes();SY.updated=r.updated;SY.roDirty=false;SY.dirty=false;SY.last=Date.now();store();saveSY();setSync('ok');render();return}
     if(r.updated===SY.updated){SY.last=Date.now();saveSY();if(SY.dirty)return push(false);return setSync('ok')}
     if(!SY.dirty||!hasData(S)||S.sample){S=r.data;applyQuotes();SY.updated=r.updated;SY.dirty=false;SY.last=Date.now();store();saveSY();setSync('ok');render();return}
     conflict={data:r.data,updated:r.updated};setSync('conflict');render();
@@ -480,6 +487,43 @@ function quoteLine(){
 }
 function paintQuote(){const e=document.getElementById('qtxt');if(e)e.textContent=qBusy?'시세 불러오는 중…':''}
 
+/* ===== 링크 하나로 연결 =====
+   링크: 앱주소#c=<base64url(JSON{u:웹앱주소,k:키,f:Finnhub키,r:보기전용})>
+   해시(#)는 서버로 전송되지 않음. 보기 전용 키 = SHA-256(비밀키+':view') 앞 24자 (Apps Script도 같은 방식으로 확인) */
+const b64e=o=>btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const b64d=t=>JSON.parse(decodeURIComponent(escape(atob(t.replace(/-/g,'+').replace(/_/g,'/')))));
+async function viewKeyOf(secret){
+  const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(secret+':view'));
+  return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,24);
+}
+function parseConnect(text){
+  const m=String(text||'').match(/[#&]?c=([A-Za-z0-9_-]{20,})/)||String(text||'').trim().match(/^([A-Za-z0-9_-]{20,})$/);
+  if(!m)return null;
+  try{const o=b64d(m[1]);return o&&o.u&&o.k?o:null}catch(e){return null}
+}
+let PEND=null;
+try{if(location.hash.includes('c=')){PEND=parseConnect(location.hash);history.replaceState(null,'',location.pathname+location.search)}}catch(e){}
+function applyConnect(o){
+  SY={url:o.u,key:o.k,updated:0,dirty:false,last:0,rev:0,ro:!!o.r};saveSY();
+  if(o.f){FH=o.f;try{localStorage.setItem('avgcost.fh',o.f)}catch(e){}}
+  S.sample=true;            // 이 기기 데이터는 버리고 시트 데이터를 받음
+  PEND=null;conflict=null;render();pull();if(FH)liveTick(true);
+  toast(o.r?'보기 전용으로 연결합니다':'연결합니다. 잠시 후 데이터가 나타납니다');
+}
+async function makeLink(ro){
+  const k=SY.ro?SY.key:ro?await viewKeyOf(SY.key):SY.key;
+  const o={u:SY.url,k,r:ro||SY.ro?1:0};if($('#lkFh')?.checked&&FH)o.f=FH;
+  return location.origin+location.pathname+'#c='+b64e(o);
+}
+function connectCard(){
+  if(!PEND)return SY.ro&&tab!=='set'?'<p class="sample">보기 전용으로 연결된 기기입니다. 입력·수정은 할 수 없어요.</p>':'';
+  return `<div class="card stack" style="border-color:var(--accent)">
+    <h2 style="margin:0">이 기기를 쭈식관리에 연결할까요?</h2>
+    <p class="note">이 기기에 있던 기존 내용은 시트 데이터로 바뀝니다.${PEND.f?' 실시간 시세 키도 함께 설정됩니다.':''}</p>
+    <div class="row2"><button class="btn" id="cnYes" type="button">연결하기</button><button class="ghost" id="cnNo" type="button">취소</button></div>
+  </div>`;
+}
+
 function conflictCard(){
   if(!conflict)return '';
   const sm=o=>{const st=Object.values(o.stocks||{});return `${st.length}종목 · 거래 ${st.reduce((a,x)=>a+x.tx.length,0)}건 · 공모주 ${(o.ipo||[]).length}건`};
@@ -526,7 +570,8 @@ function render(){
   document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===tab?'page':'false'));
   $('#ttl').textContent=TITLES[tab];
   $('#hdr').innerHTML=statusChip();
-  $('#main').innerHTML=conflictCard()+({hold:vHold,stock:vStock,sim:vSim,ipo:vIpo,set:vSet})[tab]();
+  document.body.classList.toggle('ro',!!SY.ro);
+  $('#main').innerHTML=connectCard()+conflictCard()+({hold:vHold,stock:vStock,sim:vSim,ipo:vIpo,set:vSet})[tab]();
   paintSync();
   if(tab==='hold'||tab==='stock')setTimeout(()=>queueNews(false),1500);
   if(tab==='sim')sim();
@@ -678,7 +723,7 @@ function vStock(){
     </div>`).join('');
   return `${chips()}
   <div class="card">
-    <label class="f" style="margin-bottom:12px">현재가 ($)<span id="plab">${priceTag(S.sel)}</span><input id="price" class="num" type="number" inputmode="decimal" step="any" value="${st.price||''}" placeholder="현재가 입력"></label>
+    <label class="f" id="priceLab" style="margin-bottom:12px">현재가 ($)<span id="plab">${priceTag(S.sel)}</span><input id="price" class="num" type="number" inputmode="decimal" step="any" value="${st.price||''}" placeholder="현재가 입력"></label>
     <div id="sum">${summary(st,c)}</div>
   </div>
   <div class="card">
@@ -833,6 +878,17 @@ function vIpo(){
 
 function vSet(){
   return `<div class="card stack">
+    <h2 style="margin:0">다른 기기 연결</h2>
+    ${syncOn()?`
+    <p class="note">링크를 받은 기기에서 누르면 바로 연결되고, 그 기기에서도 보고 고칠 수 있어요. 링크에 비밀 키가 들어 있으니 <b>가족에게만</b> 보내세요.</p>
+    <button class="btn" id="lkEdit" type="button">연결 링크 복사</button>
+    ${FH?'<label style="display:flex;align-items:center;gap:8px;font-size:14px"><input id="lkFh" type="checkbox" checked style="width:auto"> 실시간 시세 키도 함께 보내기</label>':''}
+    <textarea id="lkOut" readonly hidden></textarea>`:'<p class="note">이 기기가 아직 연결되지 않았습니다. 받은 연결 링크(또는 코드)를 아래에 붙여넣으세요.</p>'}
+    <details class="guide" ${syncOn()?'':'open'}><summary>받은 연결 링크 붙여넣기 (아이폰은 이 방법으로)</summary>
+      <div class="stack" style="margin-top:8px"><textarea id="lkIn" placeholder="카톡으로 받은 연결 링크를 통째로 붙여넣으세요"></textarea><button class="btn" id="lkGo" type="button">이 링크로 연결</button></div>
+    </details>
+  </div>
+  <div class="card stack">
     <h2 style="margin:0">실시간 시세 (Finnhub)</h2>
     <div class="sstat">${FH?(lvMsg?'● '+esc(lvMsg):lvAt?'● 연결됨 · '+tm(lvAt)+' 갱신':'● 연결됨'):'연결되지 않았습니다. 지금은 구글 시세(최대 20분 지연)를 씁니다.'}</div>
     <label class="f">API 키<input id="fhKey" type="password" value="${esc(FH)}" placeholder="finnhub.io 대시보드의 API key" autocomplete="off"></label>
@@ -891,6 +947,12 @@ document.addEventListener('click',e=>{
   if(b.dataset.sync==='remote'){S=conflict.data;applyQuotes();SY.updated=conflict.updated;SY.dirty=false;SY.last=Date.now();conflict=null;store();saveSY();setSync('ok');render();return toast('시트 데이터로 맞췄습니다')}
   if(b.dataset.sync==='local'){conflict=null;render();push(true);return toast('이 기기 데이터로 덮어씁니다')}
   if(b.id==='syncDot')return go('set');
+  if(b.id==='cnYes'&&PEND)return applyConnect(PEND);
+  if(b.id==='cnNo'){PEND=null;return render()}
+  if(b.id==='lkGo'){const o=parseConnect($('#lkIn').value);if(!o)return toast('연결 링크가 올바르지 않습니다. 링크 전체를 붙여넣으세요');PEND=o;go('hold');return}
+  if(b.id==='lkEdit'||b.id==='lkView'){makeLink(b.id==='lkView').then(link=>{
+      const done=()=>toast('연결 링크를 복사했습니다. 카톡으로 보내세요');
+      (navigator.clipboard?navigator.clipboard.writeText(link):Promise.reject()).then(done).catch(()=>{const t=$('#lkOut');t.hidden=false;t.value=link;t.select();toast('선택된 링크를 직접 복사하세요')})});return}
   if(b.dataset.hm){HV.m=b.dataset.hm;saveHV();const y=scrollY;render();scrollTo(0,y);return}
   if(b.dataset.cur){HV.cur=b.dataset.cur;saveHV();const y=scrollY;render();scrollTo(0,y);return}
   if(b.id==='newsLang'){NL=NL==='ko'?'en':'ko';try{localStorage.setItem('avgcost.nl',NL)}catch(e){}
