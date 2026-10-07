@@ -363,6 +363,7 @@ function dayPL(){
 
 /* ===== 보유 종목 뉴스 (Finnhub company-news, 최근 7일) =====
    종목별 15분 캐시, 이 기기에만 저장. 불러오면 뉴스 영역만 다시 그림 */
+const SHOW_NEWS=false;   // 뉴스 표시 여부 (true로 바꾸면 보유·종목 탭에 뉴스 카드가 다시 나옴)
 let NW={};try{NW=JSON.parse(localStorage.getItem('avgcost.nw'))||{}}catch(e){}
 let newsBusy=false,newsErr='',trNote='';
 let NL='ko';try{NL=localStorage.getItem('avgcost.nl')||'ko'}catch(e){}
@@ -421,7 +422,7 @@ function newsAllBody(){
 }
 const newsErrText=e=>e.message==='key'?'Finnhub 키가 올바르지 않습니다':e.message==='limit'?'요청이 많아 잠시 후 다시 불러옵니다':navigator.onLine===false?'오프라인':'뉴스를 불러오지 못했습니다';
 async function queueNews(force){
-  if(!FH||newsBusy)return;
+  if(!SHOW_NEWS||!FH||newsBusy)return;
   const tks=tab==='stock'&&S.sel?[S.sel]:tab==='hold'?Object.keys(S.stocks).filter(k=>calc(S.stocks[k]).sh>0):[];
   if(!tks.length)return;
   newsBusy=true;newsErr='';
@@ -588,7 +589,7 @@ function vHold(){
     <div style="display:grid;grid-template-columns:1fr auto;gap:8px"><input id="newTk" placeholder="티커 입력 (예: TSLA)" maxlength="10" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase"><button class="btn" style="width:auto">추가</button></div>
   </form>
   <div class="hlist">${list}${cashRow}</div>
-  ${n?`<div class="card"><div class="split" style="margin-bottom:6px"><h2 style="margin:0">보유 종목 뉴스</h2>${FH?`<span><button class="linkbtn nl" id="newsLang" type="button" aria-label="뉴스 언어 바꾸기">${NL==='ko'?'원문':'한국어'}</button><button class="linkbtn" id="newsRefresh" type="button" aria-label="뉴스 새로고침">↻</button></span>`:''}</div><div id="newsAll">${newsAllBody()}</div></div>`:''}
+  ${n&&SHOW_NEWS?`<div class="card"><div class="split" style="margin-bottom:6px"><h2 style="margin:0">보유 종목 뉴스</h2>${FH?`<span><button class="linkbtn nl" id="newsLang" type="button" aria-label="뉴스 언어 바꾸기">${NL==='ko'?'원문':'한국어'}</button><button class="linkbtn" id="newsRefresh" type="button" aria-label="뉴스 새로고침">↻</button></span>`:''}</div><div id="newsAll">${newsAllBody()}</div></div>`:''}
   ${n?allocChart():''}`;
 }
 
@@ -634,7 +635,7 @@ function vStock(){
     </form>
     <div style="margin-top:8px">${txs||'<p class="empty">아직 거래가 없습니다.</p>'}</div>
   </div>
-  <div class="card"><div class="split" style="margin-bottom:6px"><h2 style="margin:0">${esc(S.sel)} 최근 뉴스</h2>${FH?`<span><button class="linkbtn nl" id="newsLang" type="button" aria-label="뉴스 언어 바꾸기">${NL==='ko'?'원문':'한국어'}</button><button class="linkbtn" id="newsRefresh" type="button" aria-label="뉴스 새로고침">↻</button></span>`:''}</div><div id="newsBox">${newsBody(S.sel)}</div></div>
+  ${SHOW_NEWS?`<div class="card"><div class="split" style="margin-bottom:6px"><h2 style="margin:0">${esc(S.sel)} 최근 뉴스</h2>${FH?`<span><button class="linkbtn nl" id="newsLang" type="button" aria-label="뉴스 언어 바꾸기">${NL==='ko'?'원문':'한국어'}</button><button class="linkbtn" id="newsRefresh" type="button" aria-label="뉴스 새로고침">↻</button></span>`:''}</div><div id="newsBox">${newsBody(S.sel)}</div></div>`:''}
   <button class="ghost danger" id="delTk">${esc(S.sel)} 종목 삭제</button>`;
 }
 
