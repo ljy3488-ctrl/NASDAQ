@@ -194,6 +194,24 @@ button.hcard:active{background:var(--accent-soft)}
 .hline{display:flex;gap:8px;align-items:baseline;font-size:15px;font-weight:600}
 .hline .muted{font-size:13px;font-weight:500}
 .hmeta{font-size:13px;color:var(--muted);margin-top:6px}
+
+/* 공모주 캘린더 */
+:root{--csub:#2f7de1;--clst:#f08a1c}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--csub:#5d9bff;--clst:#ffa94d}}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal .dow{text-align:center;font-size:12px;color:var(--muted);padding:4px 0}
+.cal .d{font:inherit;font-size:14px;color:var(--ink);background:none;border:1px solid transparent;border-radius:9px;min-height:50px;padding:4px 0 2px;display:flex;flex-direction:column;align-items:center;cursor:pointer}
+.cal .d.out{opacity:.28}.cal .d.today{border-color:var(--accent)}.cal .d.sel{background:var(--accent-soft)}
+.cal .d.sun{color:var(--up)}.cal .d.sat{color:var(--down)}
+.cal .dots{display:flex;gap:3px;flex-wrap:wrap;justify-content:center;margin-top:4px;max-width:34px}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}.dot.sub{background:var(--csub)}.dot.lst{background:var(--clst)}
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.cal-head button{font:inherit;font-weight:700;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:6px 14px;cursor:pointer}
+.calleg{display:flex;flex-direction:row;gap:14px;font-size:13px;color:var(--muted);margin-top:8px;align-items:center}
+.ev{display:flex;gap:10px;justify-content:space-between;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
+.ev:first-child{border-top:0}.ev .t{font-weight:700}.ev .s{font-size:13px;color:var(--muted);margin-top:3px;line-height:1.5}
+.ev .dd{font-family:var(--mono);font-weight:700;font-size:13px;white-space:nowrap}
+.tag{font-size:11px;border-radius:6px;padding:1px 6px;margin-left:4px;background:var(--bg);color:var(--muted);border:1px solid var(--line)}
 .seg.mini{display:inline-grid;grid-auto-flow:column;grid-template-columns:none;padding:2px;border-radius:9px}
 .seg.mini button{padding:5px 12px;font-size:13px;border-radius:7px;color:var(--muted)}
 .seg.mini button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgb(0 0 0/.08),0 0 0 1px var(--line)}
@@ -896,7 +914,57 @@ async function loadIpoList(force){
   if(tab==='ipo'){const dl=$('#ipoNames');if(dl)dl.innerHTML=ipoOptions();const a=document.activeElement;if(!(a&&/INPUT/.test(a.tagName)))render()}
 }
 const ipoOptions=()=>IPL.list.slice(0,200).map(x=>`<option value="${esc(x.n.replace(/\(.*?\)/g,'').trim())}">${x.p.toLocaleString()}원 · ${esc(x.d)}</option>`).join('');
+
+/* ===== 공모주 캘린더 (청약일·상장일) ===== */
+let ipoView='rec',ICAL={at:0,items:[]},icalBusy=false,icalMsg='',calYM=today().slice(0,7),calSel=today();
+try{Object.assign(ICAL,JSON.parse(localStorage.getItem('avgcost.ical'))||{})}catch(e){}
+async function loadIpoCal(force){
+  if(!syncOn()||icalBusy)return;
+  if(!force&&ICAL.items.length&&Date.now()-ICAL.at<3*3600e3)return;
+  icalBusy=true;icalMsg='';
+  try{const r=await api('GET',null,'&action=ipocal'+(force?'&force=1':''));
+    if(r.ok&&Array.isArray(r.items)){ICAL={at:Date.now(),items:r.items};try{localStorage.setItem('avgcost.ical',JSON.stringify(ICAL))}catch(e){}}
+    else icalMsg=r.message||'일정을 불러오지 못했습니다'}
+  catch(e){icalMsg='일정을 불러오지 못했습니다 (구글 시트 코드 업데이트가 필요할 수 있어요)'}
+  icalBusy=false;if(tab==='ipo'&&ipoView==='cal')render();
+}
+const ymdAdd=(ymd,n)=>{const d=new Date(ymd+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
+const dayDiff=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/864e5);
+const WD=['일','월','화','수','목','금','토'];
+const md=ymd=>`${+ymd.slice(5,7)}/${+ymd.slice(8,10)}`;
+const mdw=ymd=>`${md(ymd)}(${WD[new Date(ymd+'T00:00:00Z').getUTCDay()]})`;
+function icalOn(ymd){const r=[];for(const x of ICAL.items){if(ymd>=x.s&&ymd<=x.e)r.push({x,k:'sub'});if(ymd===x.l)r.push({x,k:'lst'})}return r}
+function priceTxt(x){return x.p?x.p.toLocaleString()+'원':x.h?'희망 '+esc(x.h)+'원':'공모가 미정'}
+function evRow(x){
+  const t=today();let dd='';
+  if(t<x.s)dd='청약 D-'+dayDiff(t,x.s);else if(t<=x.e)dd='청약 중';else if(t<x.l)dd='상장 D-'+dayDiff(t,x.l);else if(t===x.l)dd='오늘 상장';else dd='상장 완료';
+  return `<div class="ev"><div><div class="t">${esc(x.n)}</div>
+    <div class="s"><span class="dot sub"></span> 청약 ${mdw(x.s)}${x.e!==x.s?' ~ '+mdw(x.e):''}<br><span class="dot lst"></span> 상장 ${mdw(x.l)}${x.est?'<span class="tag">예정(추정)</span>':''}<br>${priceTxt(x)}${x.b?' · '+esc(x.b):''}</div></div><div class="dd">${dd}</div></div>`}
+function vIpoCal(){
+  setTimeout(()=>loadIpoCal(false),200);
+  const [Y,M]=calYM.split('-').map(Number),first=new Date(Date.UTC(Y,M-1,1)),start=ymdAdd(calYM+'-01',-first.getUTCDay());
+  const t=today();let cells='';
+  for(let i=0;i<42;i++){
+    const d=ymdAdd(start,i),inM=d.slice(0,7)===calYM,w=i%7,ev=icalOn(d);
+    if(i>=35&&d.slice(0,7)!==calYM)break;
+    cells+=`<button class="d${inM?'':' out'}${d===t?' today':''}${d===calSel?' sel':''}${w===0?' sun':w===6?' sat':''}" data-cday="${d}">${+d.slice(8,10)}<span class="dots">${ev.slice(0,4).map(e=>`<i class="dot ${e.k}"></i>`).join('')}</span></button>`}
+  const dayEv=icalOn(calSel),up=ICAL.items.filter(x=>x.l>=t).slice(0,12);
+  const selTxt=dayEv.length?dayEv.map(e=>`<div class="ev"><div><div class="t"><span class="dot ${e.k}"></span> ${esc(e.x.n)} · ${e.k==='sub'?'청약':'상장'}${e.k==='lst'&&e.x.est?'<span class="tag">예정(추정)</span>':''}</div><div class="s">${priceTxt(e.x)}${e.x.b?' · '+esc(e.x.b):''}</div></div></div>`).join(''):'<div class="muted" style="font-size:14px;padding:8px 0">이 날은 일정이 없습니다</div>';
+  return `<div class="card">
+    <div class="cal-head"><button data-cm="-1">‹</button><b style="font-size:17px">${Y}년 ${M}월</b><button data-cm="1">›</button></div>
+    <div class="cal">${['일','월','화','수','목','금','토'].map(x=>`<div class="dow">${x}</div>`).join('')}${cells}</div>
+    <div class="calleg"><span><i class="dot sub"></i> 청약</span><span><i class="dot lst"></i> 상장</span><button class="x" data-cm="0" style="margin-left:auto">오늘</button></div>
+  </div>
+  <div class="card"><h2 style="margin:0 0 4px">${mdw(calSel)}</h2>${selTxt}</div>
+  <div class="card"><h2 style="margin:0 0 4px">다가오는 일정</h2>${up.length?up.map(evRow).join(''):`<div class="muted" style="font-size:14px;padding:8px 0">${!syncOn()?'구글 시트를 연결하면 청약·상장 일정이 표시됩니다.':icalBusy?'일정을 불러오는 중입니다…':esc(icalMsg)||'예정된 공모주가 없습니다'}</div>`}
+    <div class="note" style="margin-top:8px">38커뮤니케이션 기준 · 상장일이 아직 공개되지 않은 종목은 청약 종료 5영업일 뒤로 추정해 표시합니다.${ICAL.at?' 갱신 '+new Date(ICAL.at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}):''} <button class="x" data-ical="1">새로고침</button></div></div>`;
+}
 function vIpo(){
+  if(ipoView==='cal')return ipoSeg()+vIpoCal();
+  return ipoSeg()+vIpoRec();
+}
+const ipoSeg=()=>`<div class="seg sm" style="margin-bottom:12px"><button data-ipv="rec" aria-pressed="${ipoView==='rec'}">수익 기록</button><button data-ipv="cal" aria-pressed="${ipoView==='cal'}">일정 캘린더</button></div>`;
+function vIpoRec(){
   setTimeout(()=>loadIpoList(false),300);
   const all=S.ipo.map((x,i)=>({...x,i})).sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:b.i-a.i);
   const years=[...new Set(all.map(x=>x.d.slice(0,4)))].sort().reverse();
@@ -1080,6 +1148,10 @@ document.addEventListener('click',e=>{
   if(b.dataset.sel){S.sel=b.dataset.sel;save();return render()}
   if(b.dataset.basis){basis=b.dataset.basis;try{localStorage.setItem('avgcost.basis',basis)}catch(e){}const y=scrollY;render();scrollTo(0,y);return}
   if(b.dataset.tt){txType=b.dataset.tt;const q=$('#txQ').value,p=$('#txP').value,d=$('#txD').value,f=$('#txF').value;render();$('#txQ').value=q;$('#txP').value=p;$('#txD').value=d;$('#txF').value=f;return}
+  if(b.dataset.ipv){ipoView=b.dataset.ipv;return render()}
+  if(b.dataset.cday){calSel=b.dataset.cday;if(calSel.slice(0,7)!==calYM)calYM=calSel.slice(0,7);return render()}
+  if(b.dataset.cm!=null){const n=+b.dataset.cm;if(n===0){calYM=today().slice(0,7);calSel=today()}else{const [y,m]=calYM.split('-').map(Number),d=new Date(Date.UTC(y,m-1+n,1));calYM=d.toISOString().slice(0,7);calSel=calYM===today().slice(0,7)?today():calYM+'-01'}return render()}
+  if(b.dataset.ical){loadIpoCal(true);toast('일정을 새로 불러옵니다');return}
   if(b.dataset.year){ipoYear=b.dataset.year;return render()}
   if(b.dataset.fxt){fxType=b.dataset.fxt;const v=['fxK','fxU','fxR','fxD','fxF','fxM'].map(i=>$('#'+i).value);render();['fxK','fxU','fxR','fxD','fxF','fxM'].forEach((i,n)=>$('#'+i).value=v[n]);return}
   if(b.dataset.fxdel!=null)return arm(b,'확인',()=>{S.fxl.splice(+b.dataset.fxdel,1);save();render();toast('삭제했습니다')});
