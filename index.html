@@ -309,6 +309,10 @@ async function api(method,body,extra=''){
   try{return JSON.parse(t)}catch(e){throw new Error('응답이 올바르지 않습니다. 웹 앱 주소(/exec)와 배포 권한을 확인하세요.')}
 }
 function failed(e){setSync('error',navigator.onLine===false?'오프라인 · 연결되면 다시 시도합니다':(e&&e.message)||'연결 실패')}
+/* 내용 비교: 시세·시각처럼 수시로 바뀌는 값은 빼고 거래·현금·공모주·환전만 비교 → 같으면 충돌 창 없이 자동으로 맞춤 */
+function sig(d){try{const o={};for(const k of Object.keys(d.stocks||{}).sort()){const x=d.stocks[k];o[k]=[x.tx||[],x.name||'',x.nhName||'']}return JSON.stringify([o,d.cash||{},d.ipo||[],d.fxl||[]])}catch(e){return Math.random()+''}}
+function sameAsLocal(remote){return sig(remote)===sig(S)}
+function adoptRemoteStamp(u){SY.updated=u;SY.dirty=false;SY.last=Date.now();conflict=null;saveSY();setSync('ok');render()}
 function schedulePush(){clearTimeout(pushTimer);setSync('pending');pushTimer=setTimeout(()=>push(false),1500)}
 async function push(force){
   if(!syncOn()||busy){if(busy)schedulePush();return}
@@ -316,7 +320,7 @@ async function push(force){
   try{
     const r=await api('POST',{key:SY.key,data:S,base:SY.updated,force:!!force,view:buildView()});
     if(r.ok){SY.updated=r.updated;SY.last=Date.now();if(SY.rev===rev)SY.dirty=false;conflict=null;saveSY();setSync(SY.dirty?'pending':'ok');if(SY.dirty)schedulePush()}
-    else if(r.conflict){conflict={data:r.data,updated:r.updated};setSync('conflict');render()}
+    else if(r.conflict){if(sameAsLocal(r.data))adoptRemoteStamp(r.updated);else{conflict={data:r.data,updated:r.updated};setSync('conflict');render()}}
     else if(r.error==='readonly'){SY.ro=true;SY.dirty=false;saveSY();setSync('ok');render()}
     else if(r.error==='key')setSync('error','비밀 키가 맞지 않습니다');
     else setSync('error','저장 실패');
@@ -334,6 +338,7 @@ async function pull(){
     if(SY.ro&&(r.updated!==SY.updated||SY.roDirty)){S=r.data;applyQuotes();SY.updated=r.updated;SY.roDirty=false;SY.dirty=false;SY.last=Date.now();store();saveSY();setSync('ok');render();return}
     if(r.updated===SY.updated){SY.last=Date.now();saveSY();if(SY.dirty)return push(false);return setSync('ok')}
     if(!SY.dirty||!hasData(S)||S.sample){S=r.data;applyQuotes();SY.updated=r.updated;SY.dirty=false;SY.last=Date.now();store();saveSY();setSync('ok');render();return}
+    if(sameAsLocal(r.data)){adoptRemoteStamp(r.updated);return}
     conflict={data:r.data,updated:r.updated};setSync('conflict');render();
   }catch(e){busy=false;failed(e)}
 }
