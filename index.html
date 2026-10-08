@@ -783,10 +783,10 @@ function vStock(){
   const st=S.stocks[S.sel];if(!st)return noStock;
   const c=calc(st);if(!st.tx.length)formOpen=true;
   const txs=[...c.rows].reverse().map(r=>`<div class="tx">
-      <span class="pill ${r.t}">${r.t==='buy'?'매수':'매도'}</span>
+      <span class="pill ${r.t}"${r.src==='nh-adj'?' style="background:#e5e7eb;color:#4b5563"':''}>${r.src==='nh-adj'?'보정':r.t==='buy'?'매수':'매도'}</span>
       <span class="main">${qf(r.q)}주 × ${usd(r.p)}</span>
       <button class="x" data-del="${r.i}">삭제</button>
-      <span class="meta num">${r.src==='nh-open'?'<b>기초 잔고</b>(조회 기간 이전 매수분) · ':r.src==='nh'?'나무증권 · ':''}${r.d}${r.f?' · 수수료 '+usd(+r.f):''}${r.fx?' · 환율 '+(+r.fx).toLocaleString('ko-KR'):''} · 거래 후 ${qf(r.sh)}주, 평단 ${usd(r.avg)}${r.rp!=null?` · 실현 <span class="${cls(r.rp)}">${usd(r.rp)}</span>`:''}</span>
+      <span class="meta num">${r.src==='nh-open'?'<b>기초 잔고</b>(조회 기간 이전 매수분) · ':r.src==='nh'?'나무증권 · ':r.src==='nh-adj'?'<b>실제 거래 아님</b>(나무증권 잔고·평단에 맞춘 보정) · ':''}${r.d}${r.f?' · 수수료 '+usd(+r.f):''}${r.fx?' · 환율 '+(+r.fx).toLocaleString('ko-KR'):''} · 거래 후 ${qf(r.sh)}주, 평단 ${usd(r.avg)}${r.rp!=null?` · 실현 <span class="${cls(r.rp)}">${usd(r.rp)}</span>`:''}</span>
     </div>`).join('');
   return `${chips()}
   <div class="card">
