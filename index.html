@@ -631,6 +631,18 @@ function calc(st){
 }
 function totals(){let c=0,v=0,r=0,ck=0,pk=0;for(const k in S.stocks){const x=calc(S.stocks[k]);c+=x.cost;v+=x.val;r+=x.realized;ck+=x.costK;pk+=x.plK}return{c,v,r,pl:v-c,plp:c?(v-c)/c*100:0,ck,plK:pk,plKp:ck?pk/ck*100:0}}
 
+/* 입력 중인 폼(공모주 수익 기록·환전)은 다른 앱에 갔다 와서 화면이 다시 그려져도 임시 저장해 둔 값으로 복원 */
+const DRAFT_IDS={ipo:['iN','iD','iOp','iSp','iQ','iF','iPl','iB'],fx:['fxD','fxK','fxU','fxR','fxF','fxM']};
+let DR={};try{DR=JSON.parse(localStorage.getItem('avgcost.draft'))||{}}catch(e){}
+const saveDR=()=>{try{localStorage.setItem('avgcost.draft',JSON.stringify(DR))}catch(e){}};
+function clearDraft(g){DRAFT_IDS[g].forEach(id=>delete DR[id]);saveDR()}
+function restoreDraft(){
+  let n=0;
+  for(const id in DR){const el=document.getElementById(id);if(el&&el.tagName==='INPUT'&&el.value!==DR[id]){el.value=DR[id];n++}}
+  if(DR.iOp&&$('#iOp'))$('#iOp').dataset.auto='';
+  if($('#iPl')&&$('#iRate'))$('#iPl').dispatchEvent(new Event('input',{bubbles:true}));
+  if(document.getElementById('fxK')){fxEdits=['fxK','fxU','fxR'].filter(id=>DR[id]).slice(-2)}
+}
 const TITLES={hold:'쭈식관리',stock:'종목 상세',sim:'물타기 계산',ipo:'공모주 수익',fx:'환전 기록',set:'설정'};
 function render(){
   if(!S.cash)S.cash={usd:0,krw:0};
@@ -643,6 +655,7 @@ function render(){
   $('#hdr').innerHTML=statusChip();
   document.body.classList.toggle('ro',!!SY.ro);
   $('#main').innerHTML=connectCard()+conflictCard()+({hold:vHold,stock:vStock,sim:vSim,ipo:vIpo,fx:vFx,set:vSet})[tab]();
+  restoreDraft();
   paintSync();
   try{histRecord()}catch(e){}
   if(tab==='hold'||tab==='stock')setTimeout(()=>queueNews(false),1500);
@@ -1303,12 +1316,12 @@ document.addEventListener('submit',e=>{
     if(!(k>0&&u>0))return toast('원화와 달러 금액(또는 환율)을 넣으세요');
     if(fxType==='sell'&&u>calcFx().held+1e-6)toast('기록된 환전 달러보다 많이 바꿨어요. 그대로 저장합니다');
     S.fxl.push({d:$('#fxD').value||today(),t:fxType,krw:k,usd:+u.toFixed(2),f:Math.round(+$('#fxF').value||0),m:$('#fxM').value.trim()});
-    fxEdits=[];S.sample=false;save();render();toast('환전을 기록했습니다');return}
+    fxEdits=[];clearDraft('fx');S.sample=false;save();render();toast('환전을 기록했습니다');return}
   if(e.target.id==='ipoForm'){const n=$('#iN').value.trim(),pl=Math.round(+$('#iPl').value);
     if(!n||!isFinite(pl)||$('#iPl').value==='')return toast('종목명과 수익금을 입력하세요');
     const num=id=>+$(id).value||0;
     S.ipo.push({n,d:$('#iD').value||today(),b:$('#iB').value.trim(),op:num('#iOp'),sp:num('#iSp'),q:num('#iQ'),f:num('#iF'),pl});
-    S.sample=false;save();render();toast(n+' 기록했습니다');return}
+    clearDraft('ipo');S.sample=false;save();render();toast(n+' 기록했습니다');return}
   if(e.target.id==='txForm'){const st=S.stocks[S.sel],q=+$('#txQ').value,p=+$('#txP').value;
     if(!(q>0&&p>0))return;
     if(txType==='sell'&&q>calc(st).sh+1e-9)return toast('보유 수량보다 많이 팔 수 없습니다');
@@ -1336,6 +1349,13 @@ document.addEventListener('input',e=>{
   if(id==='iOp'&&e.isTrusted)delete e.target.dataset.auto;
   if(e.target.classList.contains('ic')||id==='iPl'){const op=+$('#iOp').value,q=+$('#iQ').value,pl=$('#iPl').value,el=$('#iRate');
     if(el){const r=op>0&&q>0&&pl!==''?(+pl)/(op*q)*100:null;el.textContent=r==null?'':'수익률 '+rateTxt(r);el.className='ipr '+(r==null?'':cls(r))}}
+});
+/* 위 입력 처리(자동 계산 포함)가 끝난 뒤 폼 전체를 임시 저장 */
+document.addEventListener('input',e=>{
+  const id=e.target.id;
+  if(e.target.tagName!=='INPUT'||!(DRAFT_IDS.ipo.includes(id)||DRAFT_IDS.fx.includes(id)))return;
+  for(const g of ['ipo','fx'])if(DRAFT_IDS[g].includes(id))DRAFT_IDS[g].forEach(i=>{const el=document.getElementById(i);if(el){if(el.value==='')delete DR[i];else DR[i]=el.value}});
+  saveDR();
 });
 document.addEventListener('change',e=>{
   if(e.target.id==='stName'&&S.stocks[S.sel]){S.stocks[S.sel].name=e.target.value.trim();save();toast('종목명을 저장했습니다');return}
