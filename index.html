@@ -1076,7 +1076,10 @@ function vIpo(){
   return ipoSeg()+vIpoRec();
 }
 const ipoSeg=()=>`<div class="seg sm" style="margin-bottom:12px"><button data-ipv="rec" aria-pressed="${ipoView==='rec'}">수익 기록</button><button data-ipv="cal" aria-pressed="${ipoView==='cal'}">일정 캘린더</button></div>`;
+let ipoEditIdx=null;
 function vIpoRec(){
+  if(ipoEditIdx!=null&&!S.ipo[ipoEditIdx])ipoEditIdx=null;
+  const ed=ipoEditIdx!=null;
   setTimeout(()=>loadIpoList(false),300);
   const all=S.ipo.map((x,i)=>({...x,i})).sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:b.i-a.i);
   const years=[...new Set(all.map(x=>x.d.slice(0,4)))].sort().reverse();
@@ -1093,7 +1096,7 @@ function vIpoRec(){
   const list=rows.map(x=>`<div class="ipo">
       <span class="n">${esc(x.n)}</span><span class="v ${cls(x.pl)}">${x.pl>0?'+':''}${won(x.pl)}${ipoRate(x)!=null?`<span class="ipr ${cls(x.pl)}">${rateTxt(ipoRate(x))}</span>`:''}</span>
       <span class="meta num">${x.d}${x.b?' · '+esc(x.b):''}${x.q?` · ${x.q.toLocaleString()}주`:''}${x.op&&x.sp?` · ${x.op.toLocaleString()}→${x.sp.toLocaleString()}원`:''}</span>
-      <span class="act"><button class="x" data-ipodel="${x.i}">삭제</button></span></div>`).join('');
+      <span class="act"><button class="x" data-ipoedit="${x.i}">수정</button><button class="x" data-ipodel="${x.i}">삭제</button></span></div>`).join('');
   return `<div class="ychips"><button class="chip" data-year="all" aria-pressed="${ipoYear==='all'}">전체</button>${years.map(y=>`<button class="chip" data-year="${y}" aria-pressed="${ipoYear===y}">${y}</button>`).join('')}</div>
   <div class="card">
     <div class="label">${ipoYear==='all'?'누적 공모주 수익':ipoYear+'년 공모주 수익'}</div>
@@ -1109,7 +1112,7 @@ function vIpoRec(){
     ${monthly}
   </div>
   <form class="card stack" id="ipoForm">
-    <h2 style="margin:0">수익 기록</h2>
+    <h2 style="margin:0">${ed?'기록 수정 · '+esc(S.ipo[ipoEditIdx].n):'수익 기록'}</h2>
     <div class="row2">
       <label class="f">종목명<input id="iN" required placeholder="예: OO바이오" autocomplete="off" list="ipoNames"><datalist id="ipoNames">${ipoOptions()}</datalist></label>
       <label class="f">매도일<input id="iD" type="date" value="${today()}" required></label>
@@ -1120,7 +1123,7 @@ function vIpoRec(){
     </div>
     <label class="f">수익금 (원) <span id="iRate" class="ipr" style="margin:0"></span><input id="iPl" class="num" type="number" inputmode="numeric" step="1" required placeholder="공모가·매도가·수량을 넣으면 자동 계산"></label>
     <label class="f">증권사 (선택)<input id="iB" placeholder="예: NH, 한투" autocomplete="off"></label>
-    <button class="btn">기록하기</button>
+    ${ed?'<div class="row2"><button class="btn">수정 완료</button><button class="ghost" type="button" data-ipocancel="1">취소</button></div>':'<button class="btn">기록하기</button>'}
     <p class="note" id="iHint">${syncOn()?(IPL.list.length?'종목명을 입력하면 확정공모가가 자동으로 채워집니다.':'공모가 목록을 불러오는 중입니다…'):'구글 시트를 연결하면 공모가가 자동으로 채워집니다.'} 수익금만 적어도 되고, 손실이면 앞에 -를 붙이세요.</p>
   </form>
   <div class="card">
@@ -1268,7 +1271,11 @@ document.addEventListener('click',e=>{
   if(b.dataset.year){ipoYear=b.dataset.year;return render()}
   if(b.dataset.fxt){fxType=b.dataset.fxt;const v=['fxK','fxU','fxR','fxD','fxF','fxM'].map(i=>$('#'+i).value);render();['fxK','fxU','fxR','fxD','fxF','fxM'].forEach((i,n)=>$('#'+i).value=v[n]);return}
   if(b.dataset.fxdel!=null)return arm(b,'확인',()=>{S.fxl.splice(+b.dataset.fxdel,1);save();render();toast('삭제했습니다')});
-  if(b.dataset.ipodel!=null)return arm(b,'확인',()=>{S.ipo.splice(+b.dataset.ipodel,1);save();render();toast('삭제했습니다')});
+  if(b.dataset.ipoedit!=null){const x=S.ipo[+b.dataset.ipoedit];if(!x)return;ipoEditIdx=+b.dataset.ipoedit;clearDraft('ipo');
+    const set=(id,v)=>{if(v!==''&&v!=null&&v!==0)DR[id]=String(v)};set('iN',x.n);set('iD',x.d);set('iOp',x.op);set('iSp',x.sp);set('iQ',x.q);set('iF',x.f);set('iB',x.b);DR.iPl=String(x.pl);saveDR();
+    render();$('#ipoForm')?.scrollIntoView({block:'center'});return}
+  if(b.dataset.ipocancel){ipoEditIdx=null;clearDraft('ipo');render();return}
+  if(b.dataset.ipodel!=null)return arm(b,'확인',()=>{S.ipo.splice(+b.dataset.ipodel,1);ipoEditIdx=null;save();render();toast('삭제했습니다')});
   if(b.dataset.del!=null)return arm(b,'확인',()=>{S.stocks[S.sel].tx.splice(+b.dataset.del,1);save();render();toast('삭제했습니다')});
   if(b.dataset.sync==='remote'){S=mergeH(conflict.data);applyQuotes();SY.updated=conflict.updated;SY.dirty=false;SY.last=Date.now();conflict=null;store();saveSY();setSync('ok');render();return toast('시트 데이터로 맞췄습니다')}
   if(b.dataset.sync==='local'){conflict=null;render();push(true);return toast('이 기기 데이터로 덮어씁니다')}
@@ -1320,7 +1327,9 @@ document.addEventListener('submit',e=>{
   if(e.target.id==='ipoForm'){const n=$('#iN').value.trim(),pl=Math.round(+$('#iPl').value);
     if(!n||!isFinite(pl)||$('#iPl').value==='')return toast('종목명과 수익금을 입력하세요');
     const num=id=>+$(id).value||0;
-    S.ipo.push({n,d:$('#iD').value||today(),b:$('#iB').value.trim(),op:num('#iOp'),sp:num('#iSp'),q:num('#iQ'),f:num('#iF'),pl});
+    const rec={n,d:$('#iD').value||today(),b:$('#iB').value.trim(),op:num('#iOp'),sp:num('#iSp'),q:num('#iQ'),f:num('#iF'),pl};
+    if(ipoEditIdx!=null&&S.ipo[ipoEditIdx]){S.ipo[ipoEditIdx]={...S.ipo[ipoEditIdx],...rec};ipoEditIdx=null;clearDraft('ipo');save();render();toast(n+' 수정했습니다');return}
+    S.ipo.push(rec);
     clearDraft('ipo');S.sample=false;save();render();toast(n+' 기록했습니다');return}
   if(e.target.id==='txForm'){const st=S.stocks[S.sel],q=+$('#txQ').value,p=+$('#txP').value;
     if(!(q>0&&p>0))return;
