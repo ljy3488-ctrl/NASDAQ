@@ -635,7 +635,8 @@ function totals(){let c=0,v=0,r=0,ck=0,pk=0;for(const k in S.stocks){const x=cal
 const DRAFT_IDS={ipo:['iN','iD','iOp','iSp','iQ','iF','iPl','iB'],fx:['fxD','fxK','fxU','fxR','fxF','fxM']};
 let DR={};try{DR=JSON.parse(localStorage.getItem('avgcost.draft'))||{}}catch(e){}
 const saveDR=()=>{try{localStorage.setItem('avgcost.draft',JSON.stringify(DR))}catch(e){}};
-function clearDraft(g){DRAFT_IDS[g].forEach(id=>delete DR[id]);saveDR()}
+function clearDraft(g){DRAFT_IDS[g].forEach(id=>delete DR[id]);if(g==='ipo')delete DR._e;saveDR()}
+if(DR._e)clearDraft('ipo');   // 수정 중이던 내용은 앱을 다시 열면 버림 (새 입력에 섞이지 않게)
 function restoreDraft(){
   let n=0;
   for(const id in DR){const el=document.getElementById(id);if(el&&el.tagName==='INPUT'&&el.value!==DR[id]){el.value=DR[id];n++}}
@@ -1252,7 +1253,8 @@ function vSet(){
 }
 
 function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>e.hidden=true,1800)}
-function go(t){tab=t;try{localStorage.setItem(TABKEY,t)}catch(e){}render();scrollTo(0,0)}
+function endIpoEdit(){if(ipoEditIdx!=null){ipoEditIdx=null;clearDraft('ipo');return true}return false}
+function go(t){endIpoEdit();tab=t;try{localStorage.setItem(TABKEY,t)}catch(e){}render();scrollTo(0,0)}
 function arm(btn,label,fn){if(btn.dataset.armed){fn()}else{btn.dataset.armed=1;btn.classList.add('armed');const o=btn.textContent;btn.textContent=label;setTimeout(()=>{if(btn.isConnected){delete btn.dataset.armed;btn.classList.remove('armed');btn.textContent=o}},3000)}}
 
 document.addEventListener('click',e=>{
@@ -1264,7 +1266,7 @@ document.addEventListener('click',e=>{
   if(b.dataset.sel){S.sel=b.dataset.sel;save();return render()}
   if(b.dataset.basis){basis=b.dataset.basis;try{localStorage.setItem('avgcost.basis',basis)}catch(e){}const y=scrollY;render();scrollTo(0,y);return}
   if(b.dataset.tt){txType=b.dataset.tt;const q=$('#txQ').value,p=$('#txP').value,d=$('#txD').value,f=$('#txF').value;render();$('#txQ').value=q;$('#txP').value=p;$('#txD').value=d;$('#txF').value=f;return}
-  if(b.dataset.ipv){ipoView=b.dataset.ipv;return render()}
+  if(b.dataset.ipv){endIpoEdit();ipoView=b.dataset.ipv;return render()}
   if(b.dataset.cday){calSel=b.dataset.cday;if(calSel.slice(0,7)!==calYM)calYM=calSel.slice(0,7);return render()}
   if(b.dataset.cm!=null){const n=+b.dataset.cm;if(n===0){calYM=today().slice(0,7);calSel=today()}else{const [y,m]=calYM.split('-').map(Number),d=new Date(Date.UTC(y,m-1+n,1));calYM=d.toISOString().slice(0,7);calSel=calYM===today().slice(0,7)?today():calYM+'-01'}return render()}
   if(b.dataset.ical){loadIpoCal(true);toast('일정을 새로 불러옵니다');return}
@@ -1272,9 +1274,9 @@ document.addEventListener('click',e=>{
   if(b.dataset.fxt){fxType=b.dataset.fxt;const v=['fxK','fxU','fxR','fxD','fxF','fxM'].map(i=>$('#'+i).value);render();['fxK','fxU','fxR','fxD','fxF','fxM'].forEach((i,n)=>$('#'+i).value=v[n]);return}
   if(b.dataset.fxdel!=null)return arm(b,'확인',()=>{S.fxl.splice(+b.dataset.fxdel,1);save();render();toast('삭제했습니다')});
   if(b.dataset.ipoedit!=null){const x=S.ipo[+b.dataset.ipoedit];if(!x)return;ipoEditIdx=+b.dataset.ipoedit;clearDraft('ipo');
-    const set=(id,v)=>{if(v!==''&&v!=null&&v!==0)DR[id]=String(v)};set('iN',x.n);set('iD',x.d);set('iOp',x.op);set('iSp',x.sp);set('iQ',x.q);set('iF',x.f);set('iB',x.b);DR.iPl=String(x.pl);saveDR();
+    const set=(id,v)=>{if(v!==''&&v!=null&&v!==0)DR[id]=String(v)};set('iN',x.n);set('iD',x.d);set('iOp',x.op);set('iSp',x.sp);set('iQ',x.q);set('iF',x.f);set('iB',x.b);DR.iPl=String(x.pl);DR._e='1';saveDR();
     render();$('#ipoForm')?.scrollIntoView({block:'center'});return}
-  if(b.dataset.ipocancel){ipoEditIdx=null;clearDraft('ipo');render();return}
+  if(b.dataset.ipocancel){endIpoEdit();render();return}
   if(b.dataset.ipodel!=null)return arm(b,'확인',()=>{S.ipo.splice(+b.dataset.ipodel,1);ipoEditIdx=null;save();render();toast('삭제했습니다')});
   if(b.dataset.del!=null)return arm(b,'확인',()=>{S.stocks[S.sel].tx.splice(+b.dataset.del,1);save();render();toast('삭제했습니다')});
   if(b.dataset.sync==='remote'){S=mergeH(conflict.data);applyQuotes();SY.updated=conflict.updated;SY.dirty=false;SY.last=Date.now();conflict=null;store();saveSY();setSync('ok');render();return toast('시트 데이터로 맞췄습니다')}
@@ -1375,6 +1377,17 @@ document.addEventListener('change',e=>{
 });
 render();
 pull();refreshQuotes(false);liveTick(true);
+/* 뒤로가기: 수정 중이면 수정 취소 → 다른 탭이면 보유 탭 → 보유 탭에서는 한 번 더 누르면 종료 */
+try{history.replaceState({base:1},'');history.pushState({app:1},'')}catch(e){}
+let backAt=0;
+addEventListener('popstate',()=>{
+  try{
+    if(endIpoEdit()){render();history.pushState({app:1},'');return}
+    if(tab!=='hold'){go('hold');history.pushState({app:1},'');return}
+    if(Date.now()-backAt<2500)return history.back();   // 두 번째 → 앱 종료
+    backAt=Date.now();toast('한 번 더 누르면 종료됩니다');history.pushState({app:1},'');
+  }catch(e){}
+});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){pull();refreshQuotes(false);liveTick(true)}});
 addEventListener('online',()=>{SY.dirty?push(false):pull()});
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js'));
